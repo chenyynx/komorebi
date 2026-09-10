@@ -18,6 +18,12 @@ interface TranscriptLine {
   readonly type?: string;
   readonly message?: {
     readonly role?: string;
+    /**
+     * API message id. Present on 620/620 assistant lines across the last 12
+     * real transcripts on this host (2026-09-10) and stable across the block
+     * split, which is what makes per-message merging possible.
+     */
+    readonly id?: string;
     readonly content?: readonly SdkBlockLike[] | string;
   };
   readonly isSidechain?: boolean;
@@ -46,6 +52,21 @@ interface CacheEntry {
 
 export interface ReplayItem extends DraftEvent {
   readonly time: number;
+}
+
+/**
+ * Blocks of one assistant API message, merged into a single replay canonical.
+ * Deliberately mirrors the live translator's PendingCanonical so both channels
+ * hand the client the SAME event structure for the same round trip.
+ */
+interface OpenMessage {
+  readonly id: string;
+  /** Step owned by this message (a tool_use inside it must not move it). */
+  readonly step: number;
+  time: number;
+  text: string;
+  reasoning: string;
+  toolCalls: { callId: string; name: string; arguments: string }[];
 }
 
 export class TranscriptReader {
@@ -80,6 +101,30 @@ export class TranscriptReader {
     let turn = 0;
     let step = 0;
     let firstTextOfCycle = true;
+    /**
+     * CC stores ONE LINE PER COMPLETED CONTENT BLOCK, all sharing a single API
+     * message id (measured: [thinking] then [tool_use] then [text]). Emitting a
+     * canonical per line would hand the client a different shape than the live
+     * stream does — and a canonical freezes its turn-step key on the client,
+     * which is exactly what killed live streaming. So replay merges by id and
+     * emits ONE canonical per API message, with the message's own step.
+     */
+    let open: OpenMessage | undefined;
+    /** Disambiguates id-less lines so a missing id can never cause a wrong merge. */
+    let noIdSeq = 0;
+    const flushOpen = (): void => {
+      const m = open;
+      if (m === undefined) return;
+      open = undefined;
+      // content-free assembly: nothing renderable, so no canonical (an empty
+      // one would freeze a key for nothing — same guard as the translator)
+      if (m.text === "" && m.reasoning === "" && m.toolCalls.length === 0) return;
+      items.push({
+        type: "assistant/message",
+        time: m.time,
+        data: { turn, step: m.step, text: m.text, reasoning: m.reasoning, toolCalls: m.toolCalls },
+      });
+    };
     for (const line of raw.split("\n")) {
       const trimmed = line.trim();
       if (trimmed === "") continue;
@@ -95,6 +140,9 @@ export class TranscriptReader {
       const content = normalizeContent(entry.message?.content);
       switch (entry.type) {
         case "user": {
+          // the assistant message that produced these results is over; settle it
+          // first so the canonical precedes its tool/result (live wire order)
+          flushOpen();
           // A plain text user line opens a prompt cycle; tool_result lines
           // belong to the current turn and are re-emitted as tool/result.
           const hasText = content.some((b) => b.type === "text" && (b.text ?? "").length > 0);
@@ -115,14 +163,21 @@ export class TranscriptReader {
           break;
         }
         case "assistant": {
-          let text = "";
-          let reasoning = "";
-          const toolCalls: { callId: string; name: string; arguments: string }[] = [];
+          // no id on a line → never merge (uniqueness has to be proven, not assumed)
+          const id = entry.message?.id ?? `noid-${++noIdSeq}`;
+          if (open !== undefined && open.id !== id) flushOpen();
+          let slot = open;
+          if (slot === undefined) {
+            slot = { id, step, time, text: "", reasoning: "", toolCalls: [] };
+            open = slot;
+          } else {
+            slot.time = time; // canonical lands at the message's last block (live: message_stop)
+          }
           for (const block of content) {
-            if (block.type === "text") text += block.text ?? "";
-            else if (block.type === "thinking") reasoning += block.thinking ?? "";
+            if (block.type === "text") slot.text += block.text ?? "";
+            else if (block.type === "thinking") slot.reasoning += block.thinking ?? "";
             else if (block.type === "tool_use") {
-              toolCalls.push({
+              slot.toolCalls.push({
                 callId: block.id ?? `tool-${turn}-${step}`,
                 name: block.name ?? "tool",
                 arguments: JSON.stringify(block.input ?? {}),
@@ -130,7 +185,6 @@ export class TranscriptReader {
               step++;
             }
           }
-          items.push({ type: "assistant/message", time, data: { turn, step, text, reasoning, toolCalls } });
           break;
         }
         default:
@@ -138,6 +192,7 @@ export class TranscriptReader {
           break;
       }
     }
+    flushOpen(); // trailing message without a following line (last turn of the session)
     return items;
   }
 }
