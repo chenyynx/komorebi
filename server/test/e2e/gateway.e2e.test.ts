@@ -24,17 +24,30 @@ let server: GatewayServer;
 let devices: DeviceStore;
 const spawnLog: SdkSpawnOptions[] = [];
 
-/** One realistic tool-using turn (forms verified in translator.test). */
+/**
+ * One realistic tool-using turn. The block split mirrors the MEASURED SDK
+ * order (2026-09-10, model qwen3.8-flash, includePartialMessages): CC sends one
+ * `assistant` message per completed content block, all sharing a single API
+ * message id, wrapped in message_start/message_stop. A canonical stamped per
+ * block freezes the client's turn-step stream key and kills streaming.
+ */
 const TURN_SCRIPT: SdkMessageLike[] = [
   { type: "system", subtype: "init", session_id: "cc-e2e-1" },
-  { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", text: "让我" } } },
-  { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", text: "想想" } } },
+  { type: "stream_event", event: { type: "message_start", message: { id: "msg_e2e_1" } } },
+  { type: "stream_event", event: { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "" } } },
+  { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "让我" } } },
+  { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "想想" } } },
+  { type: "assistant", message: { role: "assistant", id: "msg_e2e_1", content: [{ type: "thinking", thinking: "让我想想", signature: "s" }] } },
   { type: "stream_event", event: { type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "call_e2e", name: "Bash" } } },
   { type: "stream_event", event: { type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: "{\"command\":\"ls\"}" } } },
-  { type: "assistant", message: { role: "assistant", content: [{ type: "thinking", thinking: "让我想想", signature: "s" }, { type: "tool_use", id: "call_e2e", name: "Bash", input: { command: "ls" } }] } },
+  { type: "assistant", message: { role: "assistant", id: "msg_e2e_1", content: [{ type: "tool_use", id: "call_e2e", name: "Bash", input: { command: "ls" } }] } },
+  { type: "stream_event", event: { type: "message_stop" } },
   { type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "call_e2e", content: "a.txt\nb.txt" }] } },
+  { type: "stream_event", event: { type: "message_start", message: { id: "msg_e2e_2" } } },
+  { type: "stream_event", event: { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } } },
   { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "有两个文件" } } },
-  { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "有两个文件：a.txt 和 b.txt" }] } },
+  { type: "assistant", message: { role: "assistant", id: "msg_e2e_2", content: [{ type: "text", text: "有两个文件：a.txt 和 b.txt" }] } },
+  { type: "stream_event", event: { type: "message_stop" } },
   { type: "result", subtype: "success", usage: { input_tokens: 500, output_tokens: 42, cache_read_input_tokens: 10, cache_creation_input_tokens: 0 } },
 ];
 
@@ -56,6 +69,8 @@ function scriptedQuery(options: SdkSpawnOptions): SdkQueryHandle {
 /** Minimal frame-collecting client with dot-path matcher ("event.type"). */
 interface Client {
   ws: WebSocket;
+  /** Every frame ever received (next() consumes the queue; this log survives). */
+  log: Record<string, unknown>[];
   next: <T = Record<string, unknown>>(match?: Record<string, unknown>) => Promise<T>;
 }
 
@@ -64,9 +79,11 @@ function connectTo(targetPort: number, pairingCode: string, deviceId: string): C
     headers: { "x-dsh-device-id": deviceId },
   });
   const queue: Record<string, unknown>[] = [];
+  const log: Record<string, unknown>[] = [];
   const waiters: { predicate: (frame: Record<string, unknown>) => boolean; resolve: (f: Record<string, unknown>) => void }[] = [];
   ws.on("message", (data) => {
     const frame = JSON.parse(String(data)) as Record<string, unknown>;
+    log.push(frame);
     const index = waiters.findIndex((w) => w.predicate(frame));
     if (index >= 0) {
       const [waiter] = waiters.splice(index, 1);
@@ -88,6 +105,7 @@ function connectTo(targetPort: number, pairingCode: string, deviceId: string): C
   };
   return {
     ws,
+    log,
     next: <T = Record<string, unknown>>(match?: Record<string, unknown>) =>
       new Promise<T>((resolve, reject) => {
         const pred = predicate(match);
@@ -205,7 +223,36 @@ describe("full pipeline", () => {
         (b) => b.type === "tool-call",
       ),
     );
-    expect(toolCallSeen).toBe(true);
+    // WIRE GUARD (2026-09-10 streaming regression): the client's
+    // ConversationProjector drops every assistant/chunk whose `turn-step` key
+    // was already finalized by an assistant/message. Assert nothing arrives
+    // after its own canonical, and that the body really streamed.
+    const evs = client.log
+      .filter((f) => f["kind"] === "event" && f["sessionId"] === sessionId)
+      .map((f) => (f as { event: Record<string, unknown> }).event);
+    const streamKey = (e: Record<string, unknown>) => `${String(e["turn"])}-${String(e["step"])}`;
+    const finalized = new Set<string>();
+    let dropped = 0;
+    let streamedTextFrames = 0;
+    for (const e of evs) {
+      const isDelta = e["type"] === "assistant/chunk"
+        && (e["chunkType"] === "text-delta" || e["chunkType"] === "reasoning-delta");
+      if (isDelta) {
+        if (finalized.has(streamKey(e))) dropped++;
+        if (e["chunkType"] === "text-delta") streamedTextFrames++;
+      }
+      if (e["type"] === "assistant/message") finalized.add(streamKey(e));
+    }
+    expect(dropped).toBe(0);
+    // >=1 (not >1): the coalescer legitimately merges same-window deltas, so
+    // frame count is timing dependent — what must never regress is `dropped`.
+    expect(streamedTextFrames).toBeGreaterThanOrEqual(1);
+    // thinking must actually reach the wire (measured SDK field is `thinking`,
+    // not `text`; reading .text alone produced zero reasoning frames)
+    expect(evs.filter((e) => e["chunkType"] === "reasoning-delta").length).toBeGreaterThanOrEqual(1);
+    // exactly one canonical per API message (two calls in this script) — per-block
+    // canonical spam is what froze the stream key
+    expect(evs.filter((e) => e["type"] === "assistant/message")).toHaveLength(2);
 
     client.ws.send(JSON.stringify({ type: "sessions" }));
     const sessions = await client.next<{ sessions: { sessionId: string }[] }>({ kind: "sessions" });
