@@ -699,17 +699,35 @@ export class SessionOrchestrator {
   }
 
   private buildWorkspaces(): OutboundFrame {
-    const entries: { workspaceId: string; path: string; title: string; sessionIds: string[] }[] = [];
+    const entries: {
+      workspaceId: string;
+      path: string;
+      title: string;
+      sessionIds: string[];
+      createdAt: string;
+      updatedAt: string;
+    }[] = [];
+    // 官方条目带 createdAt/updatedAt（客户端 DTO 为非空字符串）；用该工作区最新会话时间戳派生。
+    const stampFor = (sessionIds: readonly string[]): string => {
+      const times = this.registry
+        .all()
+        .filter((s) => sessionIds.includes(s.sessionId))
+        .map((s) => s.metadata.updatedAt);
+      const newest = times.length > 0 ? Math.max(...times) : Math.floor(Date.now() / 1000);
+      return new Date(newest * 1000).toISOString();
+    };
     // root workspace always present
     const rootId = this.workspaceIds.get("__root__") ?? this.ensureWorkspace(this.config.workspaceRoot);
     for (const [wsId, path] of this.workspaceIds) {
       if (wsId === "__root__") continue;
       const sessionIds = this.registry.list().filter((s) => s.cwd === path).map((s) => s.sessionId);
-      entries.push({ workspaceId: wsId, path, title: path.split("/").pop() ?? path, sessionIds });
+      const stamp = stampFor(sessionIds);
+      entries.push({ workspaceId: wsId, path, title: path.split("/").pop() ?? path, sessionIds, createdAt: stamp, updatedAt: stamp });
     }
     const rootSessions = this.registry.list().filter((s) => s.cwd === this.config.workspaceRoot).map((s) => s.sessionId);
-    entries.unshift({ workspaceId: rootId, path: this.config.workspaceRoot, title: this.config.workspaceRoot.split("/").pop() ?? "home", sessionIds: rootSessions });
-    return workspacesFrame(entries);
+    const rootStamp = stampFor(rootSessions);
+    entries.unshift({ workspaceId: rootId, path: this.config.workspaceRoot, title: this.config.workspaceRoot.split("/").pop() ?? "home", sessionIds: rootSessions, createdAt: rootStamp, updatedAt: rootStamp });
+    return workspacesFrame(entries, this.registry.archivedSet);
   }
 
   private ensureWorkspace(path: string): string {

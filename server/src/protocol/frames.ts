@@ -107,7 +107,7 @@ export function sessionsFrame(
 ): OutboundFrame {
   return {
     kind: "sessions",
-    sessions: sessions.map((s) => ({
+    items: sessions.map((s) => ({
       sessionId: s.sessionId,
       ...(s.title !== undefined ? { title: s.title } : {}),
       updatedAt: s.updatedAt,
@@ -118,20 +118,29 @@ export function sessionsFrame(
   };
 }
 
-export function workspacesFrame(workspaces: readonly {
-  workspaceId: string;
-  path: string;
-  title: string;
-  sessionIds: readonly string[];
-}[]): OutboundFrame {
+export function workspacesFrame(
+  workspaces: readonly {
+    workspaceId: string;
+    path: string;
+    title: string;
+    sessionIds: readonly string[];
+    createdAt?: string;
+    updatedAt?: string;
+  }[],
+  archivedSessionIds: readonly string[] = [],
+): OutboundFrame {
+  const stamp = new Date().toISOString();
   return {
     kind: "workspaces",
-    workspaces: workspaces.map((w) => ({
+    items: workspaces.map((w) => ({
       workspaceId: w.workspaceId,
       path: w.path,
       title: w.title,
       sessionIds: [...w.sessionIds],
+      createdAt: w.createdAt ?? stamp,
+      updatedAt: w.updatedAt ?? stamp,
     })),
+    archivedSessionIds: [...archivedSessionIds],
   };
 }
 
@@ -375,6 +384,8 @@ export function agentPresetsFrame(): OutboundFrame {
   return {
     kind: "agent-presets",
     presets: [{ id: "claude-code", isDefault: true, authorable: false, hasDocument: false }],
+    authorable: false,
+    hasDocument: false,
     agentPresetDefault: "claude-code",
   };
 }

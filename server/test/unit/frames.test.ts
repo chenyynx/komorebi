@@ -138,16 +138,27 @@ describe("history frame (§5)", () => {
 });
 
 describe("sessions / workspaces (§5/§7)", () => {
-  it("sessions list items carry the §5 fields", () => {
-    const frame = sessionsFrame([{ sessionId: "s1", title: "t", updatedAt: 1786937352, running: false, blank: true, cwd: "/w" }]);
-    const sessions = (frame as Record<string, unknown>)["sessions"] as Record<string, unknown>[];
+  // 列表键以客户端为契约：sessions 与 workspaces 都是 `items`
+  //（GatewayProtocolFixtures.kt: RouteFixture("""{"kind":"sessions","items":[]}""")；
+  //  GatewayFrameRouter.swift:177/188 -> decodeItems(frame.items, ...)）。
+  it("sessions list items carry the §5 fields under the `items` key", () => {
+    const frame = sessionsFrame([{ sessionId: "s1", title: "t", updatedAt: 1786937352, running: false, blank: true, cwd: "/w" }]) as Record<string, unknown>;
+    expect("sessions" in frame).toBe(false);
+    const sessions = frame["items"] as Record<string, unknown>[];
     expect(sessions[0]).toEqual({ sessionId: "s1", title: "t", updatedAt: 1786937352, running: false, blank: true, cwd: "/w" });
   });
 
-  it("workspaces items carry workspaceId/path/title/sessionIds (§7)", () => {
-    const frame = workspacesFrame([{ workspaceId: "w1", path: "/home/ubuntu", title: "home", sessionIds: ["s1"] }]);
-    const workspaces = (frame as Record<string, unknown>)["workspaces"] as Record<string, unknown>[];
-    expect(workspaces[0]).toEqual({ workspaceId: "w1", path: "/home/ubuntu", title: "home", sessionIds: ["s1"] });
+  it("workspaces carry items/createdAt/updatedAt + archivedSessionIds (§7)", () => {
+    const frame = workspacesFrame(
+      [{ workspaceId: "w1", path: "/home/ubuntu", title: "home", sessionIds: ["s1"] }],
+      ["archived-1"],
+    ) as Record<string, unknown>;
+    expect("workspaces" in frame).toBe(false);
+    const workspaces = frame["items"] as Record<string, unknown>[];
+    expect(workspaces[0]).toMatchObject({ workspaceId: "w1", path: "/home/ubuntu", title: "home", sessionIds: ["s1"] });
+    expect(typeof workspaces[0]["createdAt"]).toBe("string");
+    expect(typeof workspaces[0]["updatedAt"]).toBe("string");
+    expect(frame["archivedSessionIds"]).toEqual(["archived-1"]);
   });
 });
 

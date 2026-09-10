@@ -261,8 +261,8 @@ describe("full pipeline", () => {
     expect(evs.filter((e) => e["type"] === "assistant/message")).toHaveLength(2);
 
     client.ws.send(JSON.stringify({ type: "sessions" }));
-    const sessions = await client.next<{ sessions: { sessionId: string }[] }>({ kind: "sessions" });
-    expect(sessions.sessions.some((s) => s.sessionId === sessionId)).toBe(true);
+    const sessions = await client.next<{ items: { sessionId: string }[] }>({ kind: "sessions" });
+    expect(sessions.items.some((s) => s.sessionId === sessionId)).toBe(true);
     client.ws.close();
   });
 
@@ -372,8 +372,8 @@ describe("full pipeline", () => {
     expect(archived.archivedSessionIds).toContain(sessionId);
 
     client.ws.send(JSON.stringify({ type: "sessions" }));
-    const sessions = await client.next<{ sessions: { sessionId: string }[] }>({ kind: "sessions" });
-    expect(sessions.sessions.some((s) => s.sessionId === sessionId)).toBe(false); // hidden after archive
+    const sessions = await client.next<{ items: { sessionId: string }[] }>({ kind: "sessions" });
+    expect(sessions.items.some((s) => s.sessionId === sessionId)).toBe(false); // hidden after archive
     client.ws.close();
   });
 });
@@ -486,8 +486,8 @@ describe("adopt an orphaned phone session id (F4 rescue)", () => {
 
     // after: it is listed, and history answers (empty transcript is still an answer)
     client.ws.send(JSON.stringify({ type: "sessions" }));
-    const listed = await client.next<{ sessions: { sessionId: string }[] }>({ kind: "sessions" });
-    expect(listed.sessions.some((x) => x.sessionId === orphan)).toBe(true);
+    const listed = await client.next<{ items: { sessionId: string }[] }>({ kind: "sessions" });
+    expect(listed.items.some((x) => x.sessionId === orphan)).toBe(true);
     client.ws.send(JSON.stringify({ type: "history", requestId: "o1", sessionId: orphan }));
     const hist = await client.next<{ kind: string; events: unknown[] }>({ kind: "history" });
     expect(Array.isArray(hist.events)).toBe(true);
