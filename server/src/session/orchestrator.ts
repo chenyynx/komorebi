@@ -41,7 +41,7 @@ import { ClaudeRunner, type PermissionOutcome, type SdkQueryFn } from "../backen
 import { pageHistory } from "../backend/history.js";
 import { schemeAEvent } from "../protocol/wire-events.js";
 import { TranscriptReader, transcriptPath } from "../backend/transcript.js";
-import type { Config, PermissionPreset } from "../config.js";
+import { resolveSpawnModel, type Config, type PermissionPreset } from "../config.js";
 
 interface PendingApproval {
   readonly rpcId: string;
@@ -340,7 +340,13 @@ export class SessionOrchestrator {
     }
 
     const preset = state.metadata.permission.preset;
-    const model = state.metadata.nextModel ?? this.settings.defaultModel?.model;
+    // A stale explicit default must never pin a model the current upstream
+    // rejects — dropping it lets the host's ANTHROPIC_MODEL (pp's `sm`) win.
+    const wanted = state.metadata.nextModel ?? this.settings.defaultModel?.model;
+    const model = resolveSpawnModel(wanted, this.config.models);
+    if (wanted !== undefined && model === undefined) {
+      console.warn(`[dsh-cc-mgw] ignoring model "${wanted}" (not in the current whitelist); inheriting the host default`);
+    }
     const resume = state.metadata.ccSessionId;
     runner.start({
       text,
