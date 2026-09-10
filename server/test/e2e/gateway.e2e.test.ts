@@ -142,6 +142,7 @@ async function openStack(query: (options: SdkSpawnOptions) => SdkQueryHandle): P
   // same wiring the composition root does in src/index.ts — without this the
   // admin plane silently reports an empty list (caught by the F5 case below)
   stackServer.preflightProvider = () => orch.preflightSnapshot();
+  stackServer.adoptProvider = (input) => orch.adoptSession(input);
   const actualPort = await stackServer.listen();
   return { actualPort, stackServer, orch };
 }
@@ -458,6 +459,40 @@ describe("graceful shutdown (F2) + restart gate (F5)", () => {
     expect(err.code).toBe("internal");
 
     await stack.stackServer.close();
+    client.ws.close();
+  });
+});
+
+
+describe("adopt an orphaned phone session id (F4 rescue)", () => {
+  it("an id the gateway never knew becomes resolvable and replays its transcript", async () => {
+    const orphan = `orphan-${Math.random().toString(36).slice(2, 10)}`;
+    const client = await pairedOn(port);
+
+    // before: the id answers session-not-found (this is the blank chat page)
+    client.ws.send(JSON.stringify({ type: "history", requestId: "o0", sessionId: orphan }));
+    const denied = await client.next<{ kind: string; code: string }>({ kind: "error" });
+    expect(denied.code).toBe("session-not-found");
+
+    // adopt (loopback admin plane, same call the rescue uses)
+    const res = await fetch(`http://127.0.0.1:${port}/mgw/adopt`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessionId: orphan, ccSessionId: "cc-not-on-disk", cwd: "/home/ubuntu" }),
+    });
+    expect(res.status).toBe(200);
+    const adopted = await res.json() as { adopted: boolean; replayedEvents: number; seq: number };
+    expect(adopted.adopted).toBe(true);
+
+    // after: it is listed, and history answers (empty transcript is still an answer)
+    client.ws.send(JSON.stringify({ type: "sessions" }));
+    const listed = await client.next<{ sessions: { sessionId: string }[] }>({ kind: "sessions" });
+    expect(listed.sessions.some((x) => x.sessionId === orphan)).toBe(true);
+    client.ws.send(JSON.stringify({ type: "history", requestId: "o1", sessionId: orphan }));
+    const hist = await client.next<{ kind: string; events: unknown[] }>({ kind: "history" });
+    expect(Array.isArray(hist.events)).toBe(true);
+    // live seq must sit above anything history renumbers from 0
+    expect(adopted.seq).toBeGreaterThan(0);
     client.ws.close();
   });
 });

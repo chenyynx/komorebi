@@ -120,6 +120,45 @@ export class SessionOrchestrator {
     return closed;
   }
 
+  /**
+   * F4: bind a session id the phone still holds to a Claude Code transcript that
+   * exists on disk, without a restart. Before the index existed (pre-F1) a
+   * restart orphaned the client's id, and every request for it answered
+   * session-not-found — the app showed a blank chat page forever.
+   *
+   * `seq` starts ABOVE the replayed history on purpose: history is renumbered
+   * from 0, so a live event reusing a seq the client already saw would be
+   * discarded as a duplicate.
+   */
+  adoptSession(input: { sessionId: string; ccSessionId: string; cwd?: string }): {
+    readonly adopted: boolean;
+    readonly replayedEvents: number;
+    readonly seq: number;
+  } {
+    const cwd = input.cwd ?? this.config.sessionCwdRoot;
+    const path = transcriptPath(HOME, cwd, input.ccSessionId);
+    const replayed = this.transcript.read(path).length;
+    const seq = replayed + 1;
+    const now = Math.floor(Date.now() / 1000);
+    const existing = this.registry.get(input.sessionId);
+    if (existing === undefined) {
+      this.registry.restore({
+        sessionId: input.sessionId,
+        cwd,
+        createdAt: now,
+        updatedAt: now,
+        seq,
+        preset: this.settings.defaultPermission,
+        ccSessionId: input.ccSessionId,
+        archived: false,
+      });
+      return { adopted: true, replayedEvents: replayed, seq };
+    }
+    // already known: just (re)point it at the transcript the phone remembers
+    existing.attachCcSession(input.ccSessionId);
+    return { adopted: false, replayedEvents: replayed, seq: existing.nextSeq };
+  }
+
   /** Read-only view for the restart gate (F5): what is live on this process. */
   preflightSnapshot(): readonly Record<string, unknown>[] {
     return this.registry.all().map((state) => ({

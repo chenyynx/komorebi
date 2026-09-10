@@ -44,6 +44,11 @@ export class GatewayServer {
    * sessions for the restart gate (F5). Optional: absent → empty list.
    */
   preflightProvider: (() => readonly Record<string, unknown>[]) | undefined;
+  /**
+   * Set by the composition root: rebinds a phone-held session id to a Claude
+   * Code transcript on disk (F4 rescue path). Loopback-only, never the phone.
+   */
+  adoptProvider: ((input: { sessionId: string; ccSessionId: string; cwd?: string }) => unknown) | undefined;
 
   constructor(
     private readonly config: Config,
@@ -82,6 +87,25 @@ export class GatewayServer {
       });
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ pairingText: payload, expiresAt }));
+      return;
+    }
+    if (url === "/mgw/adopt" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => (body += String(chunk)));
+      req.on("end", () => {
+        try {
+          const input = JSON.parse(body) as { sessionId?: string; ccSessionId?: string; cwd?: string };
+          if (typeof input.sessionId !== "string" || typeof input.ccSessionId !== "string") {
+            res.writeHead(400, { "content-type": "application/json" }).end(JSON.stringify({ error: "sessionId and ccSessionId are required" }));
+            return;
+          }
+          const result = this.adoptProvider?.({ sessionId: input.sessionId, ccSessionId: input.ccSessionId, ...(input.cwd !== undefined ? { cwd: input.cwd } : {}) });
+          res.writeHead(result === undefined ? 503 : 200, { "content-type": "application/json" });
+          res.end(JSON.stringify(result ?? { error: "adopt unsupported" }));
+        } catch {
+          res.writeHead(400).end("bad json");
+        }
+      });
       return;
     }
     if (url === "/mgw/sessions" && req.method === "GET") {

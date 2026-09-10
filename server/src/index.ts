@@ -90,6 +90,11 @@ export function main(): void {
     onClose: (conn) => orchestrator.onClose(conn),
   });
   server.preflightProvider = () => orchestrator.preflightSnapshot();
+  server.adoptProvider = (input) => {
+    const result = orchestrator.adoptSession(input);
+    sessionIndex.flush(); // persist the new mapping immediately, not on the next tick
+    return result;
+  };
 
   void server.listen().then((port) => {
     console.log(`[dsh-cc-mgw] listening on 127.0.0.1:${port}${config.wsPath}`);
