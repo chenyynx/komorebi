@@ -145,7 +145,16 @@ describe("sessions / workspaces (§5/§7)", () => {
     const frame = sessionsFrame([{ sessionId: "s1", title: "t", updatedAt: 1786937352, running: false, blank: true, cwd: "/w" }]) as Record<string, unknown>;
     expect("sessions" in frame).toBe(false);
     const sessions = frame["items"] as Record<string, unknown>[];
-    expect(sessions[0]).toEqual({ sessionId: "s1", title: "t", updatedAt: 1786937352, running: false, blank: true, cwd: "/w" });
+    expect(sessions[0]).toEqual({
+      sessionId: "s1",
+      title: "t",
+      updatedAt: 1786937352,
+      running: false,
+      blank: true,
+      cwd: "/w",
+      // 客户端读 item.projections.values.title（GatewayModels.swift:473）—— 没有这层就是目录名回退
+      projections: { values: { title: "t" } },
+    });
   });
 
   it("workspaces carry items/createdAt/updatedAt + archivedSessionIds (§7)", () => {

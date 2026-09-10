@@ -86,6 +86,15 @@ describe("wire parity with the client contract", () => {
     expect(frame["saved"]).toEqual({ provider: "claude-code", model: "glm-5.3-flash[1m]" });
   });
 
+it("session items carry the title where the client actually reads it (projections.values.title)", () => {
+    const frame = sessionsFrame([
+      { sessionId: "s1", updatedAt: 1, running: false, blank: false, title: "聊天内容当标题" },
+    ]) as Record<string, unknown>;
+    const item = (frame["items"] as Record<string, unknown>[])[0];
+    const projections = item["projections"] as { values?: { title?: string } };
+    expect(projections.values?.title).toBe("聊天内容当标题");
+  });
+
   it("save-default-model echoes reasoningEffort verbatim (client compares it field by field)", () => {
     const frame = saveDefaultModelFrame({ provider: "claude-code", model: "m", reasoningEffort: "high" }) as Record<string, unknown>;
     expect(frame["saved"]).toEqual({ provider: "claude-code", model: "m", reasoningEffort: "high" });

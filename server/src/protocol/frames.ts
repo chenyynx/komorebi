@@ -109,7 +109,12 @@ export function sessionsFrame(
     kind: "sessions",
     items: sessions.map((s) => ({
       sessionId: s.sessionId,
-      ...(s.title !== undefined ? { title: s.title } : {}),
+      // 客户端读的是 item.projections.values.title（Swift GatewayModels.swift:473 /
+      // KMP GatewayDtos.kt:349 的 projectedTitle）—— 顶层 title 它根本不读。
+      // 没有 projections 时回退链是 cwd 目录名，这就是"标题显示工作目录"的来源。
+      ...(s.title !== undefined
+        ? { title: s.title, projections: { values: { title: s.title } } }
+        : {}),
       updatedAt: s.updatedAt,
       running: s.running,
       blank: s.blank,

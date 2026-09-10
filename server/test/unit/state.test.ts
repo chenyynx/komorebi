@@ -115,3 +115,28 @@ describe("paging helpers", () => {
     expect(state.eventsBetween(2, 4).map((e) => e.seq)).toEqual([2, 3, 4]);
   });
 });
+
+describe("title derivation (Host 侧标题规则)", () => {
+  it("first user message titles the session, truncated to 28 chars", () => {
+    const s = new SessionState("s1", "/w", Date.now());
+    s.emit("user/message", 100, { content: [{ type: "text", text: "帮我看看网关为什么超时 " + "x".repeat(60) }] });
+    expect(s.metadata.title).toHaveLength(28);
+    expect(s.metadata.title?.startsWith("帮我看看")).toBe(true);
+  });
+
+  it("later messages never overwrite it, and a rename always wins", () => {
+    const s = new SessionState("s2", "/w", Date.now());
+    s.emit("user/message", 100, { content: [{ type: "text", text: "第一条" }] });
+    s.emit("user/message", 200, { content: [{ type: "text", text: "第二条不该改标题" }] });
+    expect(s.metadata.title).toBe("第一条");
+    s.setTitle("用户改名");
+    s.emit("user/message", 300, { text: "第三条" });
+    expect(s.metadata.title).toBe("用户改名");
+  });
+
+  it("plain text data (no content blocks) still titles", () => {
+    const s = new SessionState("s3", "/w", Date.now());
+    s.emit("user/message", 100, { text: "  多余空格   要压平  " });
+    expect(s.metadata.title).toBe("多余空格 要压平");
+  });
+});

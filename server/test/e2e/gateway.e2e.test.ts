@@ -628,3 +628,25 @@ describe("workspace membership after a restore (no orphaning into 未分组)", (
     client.ws.close();
   });
 });
+
+describe("session titles reach the phone (Host-side derivation)", () => {
+  it("the first user message becomes projections.values.title", async () => {
+    const stack = await openStack(scriptedQuery);
+    const client = await pairedOn(stack.actualPort);
+    client.ws.send(JSON.stringify({ type: "session-create", requestId: "tt1", cwd: "/home/ubuntu" }));
+    const created = await client.next<{ sessionId: string }>({ kind: "session-created" });
+    client.ws.send(
+      JSON.stringify({ type: "message", sessionId: created.sessionId, text: "标题应当是这句话" }),
+    );
+    await client.next({ kind: "sent" });
+    await client.next({ kind: "event", "event.type": "user/message" });
+    client.ws.send(JSON.stringify({ type: "sessions" }));
+    const listed = await client.next<{
+      items: { sessionId: string; projections?: { values?: { title?: string } } }[];
+    }>({ kind: "sessions" });
+    const row = listed.items.find((s) => s.sessionId === created.sessionId);
+    expect(row?.projections?.values?.title).toBe("标题应当是这句话");
+    client.ws.close();
+    await stack.stackServer.close();
+  });
+});

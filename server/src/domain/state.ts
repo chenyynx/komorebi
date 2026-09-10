@@ -148,8 +148,28 @@ export class SessionState {
     };
   }
 
+  /**
+   * Host 侧标题规则：首条 user/message 的正文前 28 字（与客户端本地生成标题的规则一致，
+   * SessionListReducer.applyEvent: user/message -> event.text.take(28)）。用户重命名优先，
+   * 一旦有 title 不再改写。为什么在 append 里做：这是所有事件进入会话的唯一漏斗，
+   * 且 title 会随 record() 落盘 —— 否则重启后标题退回「目录名」。
+   */
+  private maybeDeriveTitle(event: SessionEvent): void {
+    if (this.title !== undefined || event.type !== "user/message") return;
+    const data = event.data as { text?: unknown; content?: { type?: unknown; text?: unknown }[] };
+    const fromContent = Array.isArray(data?.content)
+      ? data.content
+          .filter((block): block is { type: string; text: string } => block?.type === "text" && typeof block.text === "string")
+          .map((block) => block.text)
+          .join(" ")
+      : "";
+    const raw = (typeof data?.text === "string" ? data.text : "") || fromContent;
+    this.adoptTitle(raw.replace(/\s+/g, " ").trim().slice(0, 28));
+  }
+
   /** Append an already-seq'd event; seq must equal the next allocation exactly. */
   append(event: SessionEvent): void {
+    this.maybeDeriveTitle(event);
     if (event.seq !== this.seqCounter) {
       throw new Error(`non-monotonic seq ${event.seq}, expected ${this.seqCounter}`);
     }
@@ -183,6 +203,14 @@ export class SessionState {
     // protocol pages newest→older; caller reverses as needed
     const slice = all.slice(Math.max(0, all.length - maxMessages));
     return slice;
+  }
+
+  /**
+   * 采用一个派生标题：只在还没有标题时生效，且**不动 updatedAt**
+   * （启动补齐若走 setTitle，会把所有会话刷成"刚刚活跃"，排序全乱）。
+   */
+  adoptTitle(title: string): void {
+    if (this.title === undefined && title !== "") this.title = title;
   }
 
   setTitle(title: string): void {

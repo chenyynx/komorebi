@@ -84,6 +84,12 @@ export function main(): void {
   sessionIndex.start();
   const broadcaster = new EventBroadcaster();
   const orchestrator = new SessionOrchestrator(config, registry, broadcaster, createSdkQuery());
+  // 标题规则上线前落盘的会话没有 title → 客户端会回退成目录名；启动补齐一次（best effort）
+  const healedTitles = orchestrator.deriveMissingTitles();
+  if (healedTitles > 0) {
+    sessionIndex.flush();
+    console.log(`[dsh-cc-mgw] titles derived from transcripts: ${healedTitles}`);
+  }
   const server = new GatewayServer(config, devices, {
     onFrame: (conn, frame) => orchestrator.onFrame(conn, frame as ValidatedFrame),
     onOpen: (conn) => orchestrator.onOpen(conn),
