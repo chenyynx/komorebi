@@ -810,3 +810,148 @@ describe("todos projection — TaskCreate/TaskUpdate family (P0-2b live shape)",
   });
 });
 
+describe("question channel — AskUserQuestion special case (P0-3)", () => {
+  const Q_INPUT = {
+    questions: [
+      { question: "两个都修吗？", header: "修复范围", multiSelect: false, options: [
+        { label: "两个都修", description: "指纹去重 + tool_result 过滤" },
+        { label: "只修 1", description: "只加指纹去重" },
+      ] },
+    ],
+  };
+
+  /** Fake SDK mirroring the real one: canUseTool gates AskUserQuestion execution. */
+  function questionQuery(captured: { outcome?: unknown }): (options: SdkSpawnOptions) => SdkQueryHandle {
+    return (options) => ({
+      async *[Symbol.asyncIterator]() {
+        yield { type: "system", subtype: "init", session_id: "cc-q-1" };
+        yield { type: "stream_event", event: { type: "message_start", message: { id: "msg_q1" } } };
+        yield { type: "stream_event", event: { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "call_q", name: "AskUserQuestion" } } };
+        yield { type: "assistant", message: { role: "assistant", id: "msg_q1", content: [{ type: "tool_use", id: "call_q", name: "AskUserQuestion", input: Q_INPUT }] } };
+        yield { type: "stream_event", event: { type: "message_stop" } };
+        captured.outcome = await options.canUseTool("AskUserQuestion", Q_INPUT as unknown as Record<string, unknown>);
+        yield { type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "call_q", content: "user answered" }] } };
+        yield { type: "stream_event", event: { type: "message_start", message: { id: "msg_q2" } } };
+        yield { type: "stream_event", event: { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } } };
+        yield { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "按你说的做" } } };
+        yield { type: "assistant", message: { role: "assistant", id: "msg_q2", content: [{ type: "text", text: "按你说的做" }] } };
+        yield { type: "stream_event", event: { type: "message_stop" } };
+        yield { type: "result", subtype: "success", usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } };
+      },
+      abort() { options.abortController.abort(); },
+    });
+  }
+
+  async function startQuestionTurn() {
+    const captured: { outcome?: unknown } = {};
+    const stack = await openStack(questionQuery(captured));
+    const client = await pairedOn(stack.actualPort);
+    client.ws.send(JSON.stringify({ type: "session-create", requestId: "qq1", cwd: "/home/ubuntu" }));
+    const created = await client.next<{ sessionId: string }>({ kind: "session-created" });
+    client.ws.send(JSON.stringify({ type: "message", sessionId: created.sessionId, text: "先问我一声再修" }));
+    await client.next({ kind: "sent" });
+    return { stack, client, sid: created.sessionId, captured };
+  }
+
+  it("AskUserQuestion arrives as question-requested, never as an approval card", async () => {
+    const { stack, client, sid } = await startQuestionTurn();
+    const asked = await client.next<{
+      rpcId: string; sessionId: string;
+      questions: { id: string; question: string; header?: string; options?: { label: string }[] }[];
+    }>({ kind: "question-requested" });
+    expect(asked.sessionId).toBe(sid);
+    expect(asked.rpcId.length).toBeGreaterThan(10);
+    expect(asked.questions[0]).toMatchObject({ id: "q0", question: "两个都修吗？", header: "修复范围" });
+    expect(asked.questions[0]?.options?.map((o) => o.label)).toEqual(["两个都修", "只修 1"]);
+    expect(client.log.some((f) => f["kind"] === "approval-requested")).toBe(false);
+    client.ws.close();
+    await stack.stackServer.close();
+  });
+
+  it("answer -> allow with updatedInput.answers (bridge contract); response/resolved echo rpcId", async () => {
+    const { stack, client, sid, captured } = await startQuestionTurn();
+    const asked = await client.next<{ rpcId: string }>({ kind: "question-requested" });
+    client.ws.send(JSON.stringify({
+      type: "question-answer", rpcId: asked.rpcId, sessionId: sid,
+      answers: [{ id: "q0", selected: ["两个都修"] }],
+    }));
+    // QuestionReducer clears submitting ONLY via rpcId echo (Task B hang root cause)
+    const response = await client.next<{ rpcId: string; action: string; accepted: boolean }>({ kind: "question-response" });
+    expect(response).toMatchObject({ rpcId: asked.rpcId, action: "answer", accepted: true });
+    const resolved = await client.next<{ rpcId: string; sessionId: string; outcome: string }>({ kind: "question-resolved" });
+    expect(resolved).toMatchObject({ rpcId: asked.rpcId, sessionId: sid, outcome: "answered" });
+    await client.next({ kind: "event", "event.type": "turn/end" });
+    expect(captured.outcome).toMatchObject({
+      behavior: "allow",
+      updatedInput: { answers: { "两个都修吗？": "两个都修" }, questions: Q_INPUT.questions },
+    });
+    client.ws.close();
+    await stack.stackServer.close();
+  });
+
+  it("skip -> deny + resolved(cancelled)", async () => {
+    const { stack, client, sid, captured } = await startQuestionTurn();
+    const asked = await client.next<{ rpcId: string }>({ kind: "question-requested" });
+    client.ws.send(JSON.stringify({ type: "question-cancel", rpcId: asked.rpcId, sessionId: sid }));
+    const response = await client.next<{ action: string; accepted: boolean }>({ kind: "question-response" });
+    expect(response).toMatchObject({ action: "cancel", accepted: true });
+    await client.next({ kind: "question-resolved", outcome: "cancelled" });
+    await client.next({ kind: "event", "event.type": "turn/end" });
+    expect(captured.outcome).toMatchObject({ behavior: "deny" });
+    client.ws.close();
+    await stack.stackServer.close();
+  });
+
+  it("unknown rpcId -> accepted:false reason not-pending (official lib:2249)", async () => {
+    const { stack, client } = await startQuestionTurn();
+    await client.next({ kind: "question-requested" });
+    client.ws.send(JSON.stringify({ type: "question-answer", rpcId: "rpc-unknown", answers: [{ id: "q0", selected: ["x"] }] }));
+    const response = await client.next<{ accepted: boolean; reason?: string }>({ kind: "question-response" });
+    expect(response).toMatchObject({ accepted: false, reason: "not-pending" });
+    client.ws.close();
+    await stack.stackServer.close();
+  });
+
+  it("sessionId mismatch -> explicit bad-request (official lib:2251), question stays pending", async () => {
+    const { stack, client, sid } = await startQuestionTurn();
+    const asked = await client.next<{ rpcId: string }>({ kind: "question-requested" });
+    client.ws.send(JSON.stringify({
+      type: "question-answer", rpcId: asked.rpcId, sessionId: "not-my-session",
+      answers: [{ id: "q0", selected: ["两个都修"] }],
+    }));
+    const err = await client.next<{ kind: string; code?: string; requestType?: string }>({ kind: "error" });
+    expect(err).toMatchObject({ code: "bad-request", requestType: "question-answer" });
+    client.ws.send(JSON.stringify({
+      type: "question-answer", rpcId: asked.rpcId, sessionId: sid,
+      answers: [{ id: "q0", custom: "都修，今天上线" }],
+    }));
+    const response = await client.next<{ accepted: boolean }>({ kind: "question-response" });
+    expect(response).toMatchObject({ accepted: true });
+    client.ws.close();
+    await stack.stackServer.close();
+  });
+
+  it("lane gate: conversation lane never receives interaction frames; control subscribe replays pending", async () => {
+    const { stack, client, sid } = await startQuestionTurn();
+    const asked = await client.next<{ rpcId: string }>({ kind: "question-requested" });
+    const conv = await pairedOn(stack.actualPort, "conversation");
+    conv.ws.send(JSON.stringify({ type: "subscribe", sessionId: sid }));
+    await conv.next({ kind: "subscribed" });
+    await new Promise((r) => setTimeout(r, 200));
+    expect(conv.log.filter((f) => String(f["kind"]).startsWith("question-")).length).toBe(0);
+    // a second control connection subscribing gets the replay (protocol §3.2)
+    const ctrl2 = await pairedOn(stack.actualPort);
+    ctrl2.ws.send(JSON.stringify({ type: "subscribe", sessionId: sid }));
+    await ctrl2.next({ kind: "subscribed" });
+    const replay = await ctrl2.next<{ rpcId: string; replay?: boolean }>({ kind: "question-requested" });
+    expect(replay.rpcId).toBe(asked.rpcId);
+    expect(replay.replay).toBe(true);
+    ctrl2.ws.send(JSON.stringify({
+      type: "question-answer", rpcId: replay.rpcId, sessionId: sid,
+      answers: [{ id: "q0", custom: "从另一条控制连接答复" }],
+    }));
+    await client.next({ kind: "event", "event.type": "turn/end" });
+    client.ws.close(); conv.ws.close(); ctrl2.ws.close();
+    await stack.stackServer.close();
+  });
+});

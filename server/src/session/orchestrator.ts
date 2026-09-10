@@ -11,7 +11,9 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync,
 import { join } from "node:path";
 import type { AuthenticatedConnection } from "../ws/server.js";
 import type { ValidatedFrame } from "../protocol/validation.js";
-import { errorFrame } from "../protocol/frames.js";
+import { errorFrame, questionResolvedFrame, questionResponseFrame } from "../protocol/frames.js";
+import { parseClientQuestions, buildAnswerRecord } from "../domain/questions.js";
+import type { ClientQuestion } from "../protocol/frames.js";
 import {
   directoriesFrame,
   hostFrame,
@@ -75,6 +77,14 @@ export class SessionOrchestrator {
   private taskFolders = new Map<string, TaskFolder>();
   private queues = new Map<string, QueueItem[]>();
   private pendingApprovals = new Map<string, PendingApproval>();
+  private pendingQuestions = new Map<string, {
+    rpcId: string;
+    sessionId: string;
+    input: Record<string, unknown>;
+    questions: readonly ClientQuestion[];
+    resolve: (outcome: PermissionOutcome) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }>();
   private workspaceIds = new Map<string, string>(); // workspaceId → path
   private settings: {
     defaultModel?: { provider: string; model: string; reasoningEffort?: string };
@@ -346,6 +356,12 @@ export class SessionOrchestrator {
       case "attachment":
         conn.ws.send(JSON.stringify(errorFrame(ERROR_CODES.BAD_REQUEST, "attachment storage lands with images in a later step", "attachment", frame.sessionId)));
         return;
+      case "question-answer":
+        this.handleQuestionAnswer(conn, frame);
+        return;
+      case "question-cancel":
+        this.handleQuestionCancel(conn, frame.rpcId);
+        return;
       // protocol-defined but not wired in this build (honest error, never silent):
       case "commands":
       case "command-execute":
@@ -356,8 +372,6 @@ export class SessionOrchestrator {
       case "goal-pause":
       case "goal-resume":
       case "goal-clear":
-      case "question-answer":
-      case "question-cancel":
       case "file-list":
       case "file-download-open":
       case "file-download-read":
@@ -372,9 +386,16 @@ export class SessionOrchestrator {
   private handleSubscribe(conn: AuthenticatedConnection, sessionId: string): void {
     this.broadcaster.subscribe(conn, sessionId);
     conn.ws.send(JSON.stringify({ kind: "subscribed", sessionId }));
-    // protocol: replay still-pending approvals right after subscribed
-    for (const frame of this.broadcaster.replayApprovals(sessionId)) {
-      conn.ws.send(JSON.stringify(frame));
+    // protocol: replay still-pending interactions right after subscribed.
+    // Official replayPendingInteractions skips the conversation lane
+    // (lib/index.mjs:2132) — interaction frames belong to control only.
+    if (conn.lane !== "conversation") {
+      for (const frame of this.broadcaster.replayApprovals(sessionId)) {
+        conn.ws.send(JSON.stringify(frame));
+      }
+      for (const frame of this.broadcaster.replayQuestions(sessionId)) {
+        conn.ws.send(JSON.stringify(frame));
+      }
     }
   }
 
@@ -461,7 +482,10 @@ export class SessionOrchestrator {
       ...(model !== undefined ? { model } : {}),
       ...(resume !== undefined ? { resume } : {}),
       preset,
-      canUseTool: (toolName, input) => this.requestApproval(state.sessionId, toolName, input),
+      canUseTool: (toolName, input) =>
+        toolName === "AskUserQuestion"
+          ? this.requestQuestion(state.sessionId, input)
+          : this.requestApproval(state.sessionId, toolName, input),
     });
   }
 
@@ -631,7 +655,7 @@ export class SessionOrchestrator {
     this.pendingApprovals.delete(f.rpcId);
     pending.resolve(f.outcome === "allowed-once" ? { behavior: "allow" } : { behavior: "deny", message: "用户拒绝" });
     conn.ws.send(JSON.stringify({ kind: "approval-response", rpcId: f.rpcId, sessionId: f.sessionId, approvalId: f.approvalId, outcome: f.outcome, accepted: true }));
-    this.broadcaster.broadcastControl({ kind: "approval-resolved", rpcId: f.rpcId, sessionId: f.sessionId, approvalId: f.approvalId, outcome: f.outcome }, Date.now());
+    this.broadcaster.broadcastInteraction({ kind: "approval-resolved", rpcId: f.rpcId, sessionId: f.sessionId, approvalId: f.approvalId, outcome: f.outcome }, Date.now());
     this.broadcaster.resolveApproval(f.rpcId);
   }
 
@@ -678,7 +702,7 @@ export class SessionOrchestrator {
       toolName,
       ...(reason !== undefined ? { reason } : {}),
     });
-    this.broadcaster.broadcastControl({
+    this.broadcaster.broadcastInteraction({
       kind: "approval-requested",
       rpcId,
       sessionId,
@@ -691,7 +715,7 @@ export class SessionOrchestrator {
       const timer = setTimeout(() => {
         this.pendingApprovals.delete(rpcId);
         this.broadcaster.resolveApproval(rpcId);
-        this.broadcaster.broadcastControl({ kind: "approval-resolved", rpcId, sessionId, approvalId, outcome: "cancelled" }, Date.now());
+        this.broadcaster.broadcastInteraction({ kind: "approval-resolved", rpcId, sessionId, approvalId, outcome: "cancelled" }, Date.now());
         resolve({ behavior: "deny", message: "审批超时（10 分钟）" });
       }, APPROVAL_TIMEOUT_MS);
       this.pendingApprovals.set(rpcId, {
@@ -702,6 +726,74 @@ export class SessionOrchestrator {
         timer,
       });
     });
+  }
+
+  // ---------------------------------------------------------------- questions
+
+  /** AskUserQuestion special case: questions ride the phone's HumanQuestionView, NOT approvals. */
+  private requestQuestion(sessionId: string, input: Record<string, unknown>): Promise<PermissionOutcome> {
+    const questions = parseClientQuestions(input);
+    if (questions === undefined) {
+      // unusable input: deny fast (an approval card would freeze the turn anyway)
+      return Promise.resolve({ behavior: "deny", message: "AskUserQuestion 缺少有效的 question 文本" });
+    }
+    const rpcId = randomUUID();
+    this.broadcaster.registerPendingQuestion({ rpcId, sessionId, questions });
+    this.broadcaster.broadcastControl(
+      { kind: "question-requested", rpcId, sessionId, questions: questions.map((q) => ({
+        id: q.id, question: q.question,
+        ...(q.header !== undefined ? { header: q.header } : {}),
+        ...(q.options !== undefined ? { options: q.options } : {}),
+        ...(q.multiSelect !== undefined ? { multiSelect: q.multiSelect } : {}),
+      })) },
+      Date.now(),
+    );
+    return new Promise<PermissionOutcome>((resolve) => {
+      const timer = setTimeout(() => {
+        this.pendingQuestions.delete(rpcId);
+        this.broadcaster.resolveQuestion(rpcId);
+        this.broadcaster.broadcastControl(questionResolvedFrame({ rpcId, sessionId, outcome: "cancelled" }), Date.now());
+        resolve({ behavior: "deny", message: "问题超时未回答" });
+      }, APPROVAL_TIMEOUT_MS);
+      this.pendingQuestions.set(rpcId, { rpcId, sessionId, input, questions, resolve, timer });
+    });
+  }
+
+  private handleQuestionAnswer(conn: AuthenticatedConnection, frame: Extract<ValidatedFrame, { type: "question-answer" }>): void {
+    const f = frame.frame;
+    const pending = this.pendingQuestions.get(f.rpcId);
+    if (pending === undefined) {
+      // official (lib/index.mjs:2249): not found -> answer envelope with accepted:false
+      conn.ws.send(JSON.stringify(questionResponseFrame({ rpcId: f.rpcId, action: "answer", accepted: false, reason: "not-pending" })));
+      return;
+    }
+    if (f.sessionId !== undefined && f.sessionId !== pending.sessionId) {
+      // official (lib:2251): mismatch is a bad-request error, never a silent drop
+      conn.ws.send(JSON.stringify(errorFrame(ERROR_CODES.BAD_REQUEST, "sessionId does not match the pending question", "question-answer", f.sessionId)));
+      return;
+    }
+    clearTimeout(pending.timer);
+    this.pendingQuestions.delete(f.rpcId);
+    this.broadcaster.resolveQuestion(f.rpcId);
+    const answers = buildAnswerRecord(pending.questions, f.answers);
+    // bridge-proven SDK contract (sdk-process.ts answer()): answers ride updatedInput, keyed by question text
+    pending.resolve({ behavior: "allow", updatedInput: { ...pending.input, answers } });
+    conn.ws.send(JSON.stringify(questionResponseFrame({ rpcId: f.rpcId, sessionId: pending.sessionId, action: "answer", accepted: true })));
+    this.broadcaster.broadcastControl(questionResolvedFrame({ rpcId: f.rpcId, sessionId: pending.sessionId, outcome: "answered" }), Date.now());
+  }
+
+  private handleQuestionCancel(conn: AuthenticatedConnection, rpcId: string): void {
+    const pending = this.pendingQuestions.get(rpcId);
+    if (pending === undefined) {
+      conn.ws.send(JSON.stringify(questionResponseFrame({ rpcId, action: "cancel", accepted: false, reason: "not-pending" })));
+      return;
+    }
+    clearTimeout(pending.timer);
+    this.pendingQuestions.delete(rpcId);
+    this.broadcaster.resolveQuestion(rpcId);
+    pending.resolve({ behavior: "deny", message: "用户跳过了这组问题" });
+    conn.ws.send(JSON.stringify(questionResponseFrame({ rpcId, sessionId: pending.sessionId, action: "cancel", accepted: true })));
+    this.broadcaster.broadcastControl(questionResolvedFrame({ rpcId, sessionId: pending.sessionId, outcome: "cancelled" }), Date.now());
   }
 
   // ---------------------------------------------------------------- builders

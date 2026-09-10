@@ -17,6 +17,9 @@ import {
   agentPresetsFrame,
   defaultModelFrame,
   helloFrame,
+  questionRequestedFrame,
+  questionResolvedFrame,
+  questionResponseFrame,
   saveDefaultModelFrame,
   sessionsFrame,
   workspacesFrame,
@@ -25,6 +28,9 @@ import {
 const OFFICIAL = {
   hello: '{"kind":"hello","protocol":3,"capabilities":["images"],"authenticated":true,"clients":2}',
   sessions: '{"kind":"sessions","items":[]}',
+  questionRequested: '{"kind":"question-requested","rpcId":"rpc-1","sessionId":"s1","replay":true,"questions":[{"id":"q1","question":"继续？"}]}',
+  questionResponse: '{"kind":"question-response","rpcId":"rpc-1","action":"cancel","accepted":false,"reason":"not-pending"}',
+  questionResolved: '{"kind":"question-resolved","rpcId":"rpc-1","sessionId":"s1","outcome":"cancelled"}',
   search: '{"kind":"search","items":[],"hasMore":true}',
   workspaces: '{"kind":"workspaces","items":[],"archivedSessionIds":[]}',
   agentPresets: '{"kind":"agent-presets","presets":[],"authorable":false,"hasDocument":false}',
@@ -51,6 +57,22 @@ function expectParity(frame: unknown, fixtureJson: string, label: string): void 
 describe("wire parity with the client contract", () => {
   it("hello carries protocol/capabilities/authenticated/clients", () => {
     expectParity(helloFrame(3090, 2), OFFICIAL.hello, "hello");
+  });
+
+  it("question channel frames match the official fixtures (P0-3)", () => {
+    // GatewayProtocolFixtures.kt:58-60 — the client decodes exactly these keys
+    expectParity(
+      questionRequestedFrame({ rpcId: "rpc-1", sessionId: "s1", questions: [{ id: "q1", question: "继续？" }], replay: true }),
+      OFFICIAL.questionRequested, "question-requested",
+    );
+    expectParity(
+      questionResponseFrame({ rpcId: "rpc-1", action: "cancel", accepted: false, reason: "not-pending" }),
+      OFFICIAL.questionResponse, "question-response",
+    );
+    expectParity(
+      questionResolvedFrame({ rpcId: "rpc-1", sessionId: "s1", outcome: "cancelled" }),
+      OFFICIAL.questionResolved, "question-resolved",
+    );
   });
 
   it("sessions list key is `items` (regression: 2026-09-10 stuck stop-button)", () => {

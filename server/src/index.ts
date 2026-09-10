@@ -17,6 +17,7 @@ import { GatewayServer } from "./ws/server.js";
 import type { ValidatedFrame } from "./protocol/validation.js";
 import type { SdkQueryFn, SdkSpawnOptions } from "./backend/claude-runner.js";
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { bridgeCanUseTool } from "./backend/sdk-bridge.js";
 
 /** Adapts our structural spawn options to the real SDK query(). */
 export function createSdkQuery(): SdkQueryFn {
@@ -42,16 +43,10 @@ export function createSdkQuery(): SdkQueryFn {
         permissionMode: options.permissionMode,
         includePartialMessages: options.includePartialMessages,
         abortController: options.abortController,
-        canUseTool: async (
-          toolName: string,
-          input: Record<string, unknown>,
-        ): Promise<{ behavior: "allow"; updatedInput: Record<string, unknown> } | { behavior: "deny"; message: string }> => {
-          const outcome = await options.canUseTool(toolName, input);
-          if (outcome.behavior === "allow") {
-            return { behavior: "allow", updatedInput: input };
-          }
-          return { behavior: "deny", message: outcome.message ?? "用户在手机上拒绝了该操作" };
-        },
+        // the bridge forwards outcome.updatedInput (AskUserQuestion answers) —
+        // see backend/sdk-bridge.ts for why this exact line was a regression site
+        canUseTool: (toolName: string, input: Record<string, unknown>) =>
+          bridgeCanUseTool(options.canUseTool, toolName, input),
       } as never,
     });
 

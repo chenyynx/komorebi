@@ -39,6 +39,8 @@ export interface UsageSnapshot {
 
 export interface PermissionOutcome {
   readonly behavior: "allow" | "deny";
+  /** SDK-verified (sdk.d.ts PermissionResult allow branch): rewritten tool input, used by AskUserQuestion answers. */
+  readonly updatedInput?: Record<string, unknown>;
   readonly message?: string | undefined;
 }
 

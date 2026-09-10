@@ -263,6 +263,67 @@ export function permissionFrame(sessionId: string, set: string): OutboundFrame {
   };
 }
 
+/** Client question shape: GatewayQuestion {id, header?, question, options?[{label, description?}], multiSelect?} (GatewayDtos.kt). */
+export interface ClientQuestion {
+  readonly id: string;
+  readonly question: string;
+  readonly header?: string;
+  readonly options?: readonly { label: string; description?: string }[];
+  readonly multiSelect?: boolean;
+}
+
+/** official shape (fixture GatewayProtocolFixtures.kt:58): {kind,rpcId,sessionId,questions,replay?} */
+export function questionRequestedFrame(payload: {
+  rpcId: string;
+  sessionId: string;
+  questions: readonly ClientQuestion[];
+  replay?: boolean;
+}): OutboundFrame {
+  const frame: OutboundFrame = {
+    kind: "question-requested",
+    rpcId: payload.rpcId,
+    sessionId: payload.sessionId,
+    questions: payload.questions.map((q) => ({
+      id: q.id,
+      question: q.question,
+      ...(q.header !== undefined ? { header: q.header } : {}),
+      ...(q.options !== undefined ? { options: q.options.map((o) => ({ label: o.label, ...(o.description !== undefined ? { description: o.description } : {}) })) } : {}),
+      ...(q.multiSelect !== undefined ? { multiSelect: q.multiSelect } : {}),
+    })),
+  };
+  if (payload.replay === true) frame.replay = true;
+  return frame;
+}
+
+/** official shape (fixture :59): {kind,rpcId,sessionId?,action:"answer"|"cancel",accepted,reason?}
+ * QuestionReducer.kt:77 — accepted:false + reason:"not-pending" clears the card. */
+export function questionResponseFrame(payload: {
+  rpcId: string;
+  sessionId?: string;
+  action: "answer" | "cancel";
+  accepted: boolean;
+  reason?: string;
+}): OutboundFrame {
+  const frame: OutboundFrame = {
+    kind: "question-response",
+    rpcId: payload.rpcId,
+    action: payload.action,
+    accepted: payload.accepted,
+  };
+  if (payload.sessionId !== undefined) frame.sessionId = payload.sessionId;
+  if (payload.reason !== undefined) frame.reason = payload.reason;
+  return frame;
+}
+
+/** official shape (fixture :60): {kind,rpcId,sessionId,outcome} */
+export function questionResolvedFrame(payload: {
+  rpcId: string;
+  sessionId: string;
+  outcome: "answered" | "cancelled";
+}): OutboundFrame {
+  return { kind: "question-resolved", rpcId: payload.rpcId, sessionId: payload.sessionId, outcome: payload.outcome };
+}
+
 export function approvalRequestedFrame(payload: {
   rpcId: string;
   sessionId: string;

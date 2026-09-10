@@ -6,7 +6,8 @@
 
 import type { AuthenticatedConnection } from "../ws/server.js";
 import type { OutboundFrame } from "../protocol/frames.js";
-import { approvalRequestedFrame, eventFrame } from "../protocol/frames.js";
+import { approvalRequestedFrame, eventFrame, questionRequestedFrame } from "../protocol/frames.js";
+import type { ClientQuestion } from "../protocol/frames.js";
 import { wireEvent } from "../protocol/wire-events.js";
 import type { SessionEvent } from "../domain/events.js";
 
@@ -31,6 +32,8 @@ export class EventBroadcaster {
   private subscriptionByConnection = new WeakMap<AuthenticatedConnection, Set<string>>();
   private queues = new Map<AuthenticatedConnection, SendQueueItem[]>();
   private pendingApprovals = new Map<string, PendingApproval>();
+  /** Pending questions for replay on (re)subscribe — mirrors the approval set. */
+  private pendingQuestions = new Map<string, { rpcId: string; sessionId: string; questions: readonly ClientQuestion[] }>();
 
   /** Register a connection (called on auth success). */
   track(conn: AuthenticatedConnection): void {
@@ -60,6 +63,24 @@ export class EventBroadcaster {
   /** Resolve (and stop replaying) an approval. */
   resolveApproval(rpcId: string): void {
     this.pendingApprovals.delete(rpcId);
+  }
+
+  registerPendingQuestion(q: { rpcId: string; sessionId: string; questions: readonly ClientQuestion[] }): void {
+    this.pendingQuestions.set(q.rpcId, q);
+  }
+
+  resolveQuestion(rpcId: string): void {
+    this.pendingQuestions.delete(rpcId);
+  }
+
+  /** Replay unresolved questions for a session (official replays questions+approvals on subscribe). */
+  replayQuestions(sessionId: string): readonly OutboundFrame[] {
+    const frames: OutboundFrame[] = [];
+    for (const q of this.pendingQuestions.values()) {
+      if (q.sessionId !== sessionId) continue;
+      frames.push(questionRequestedFrame({ rpcId: q.rpcId, sessionId: q.sessionId, questions: q.questions, replay: true }));
+    }
+    return frames;
   }
 
   /** Replay unresolved approvals for a session (replay: true, protocol §3.2). */
@@ -97,6 +118,18 @@ export class EventBroadcaster {
   /** Send a control frame to every tracked connection (e.g. session-title-changed). */
   broadcastControl(frame: OutboundFrame, now: number): void {
     for (const conn of this.queues.keys()) {
+      this.enqueue(conn, frame, now);
+    }
+  }
+
+  /**
+   * Interaction frames (question and approval families) go to the CONTROL LANE ONLY —
+   * official broadcastInteractionFrame skips mobileChannel==='conversation'
+   * (lib/index.mjs:2114). Legacy unsplit connections are lane 'control'.
+   */
+  broadcastInteraction(frame: OutboundFrame, now: number): void {
+    for (const conn of this.queues.keys()) {
+      if (conn.lane === "conversation") continue;
       this.enqueue(conn, frame, now);
     }
   }
