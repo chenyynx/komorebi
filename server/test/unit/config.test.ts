@@ -3,10 +3,10 @@
  * S1 will replace this placeholder coverage with real suites.
  */
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadConfig, PROVIDER_ID, resolveSpawnModel } from "../../src/config";
+import { loadConfig, PROVIDER_ID, currentHostModel, resolveSpawnModel, withHostModel } from "../../src/config";
 
 describe("loadConfig", () => {
   it("returns a frozen config object", () => {
@@ -113,5 +113,87 @@ describe("resolveSpawnModel (stale pin guard)", () => {
 
   it("empty whitelist drops any pick (nothing can be validated)", () => {
     expect(resolveSpawnModel("anything", [])).toBeUndefined();
+  });
+});
+
+describe("currentHostModel (sm switches without a restart)", () => {
+  function fileWith(model: string | undefined): { dir: string; file: string } {
+    const dir = mkdtempSync(join(tmpdir(), "mgw-host-"));
+    const file = join(dir, "settings.json");
+    writeFileSync(file, model === undefined ? "{ broken" : JSON.stringify({ env: { ANTHROPIC_MODEL: model } }), "utf8");
+    return { dir, file };
+  }
+  const wipe = (dir: string) => rmSync(dir, { recursive: true, force: true });
+
+  it("reads the host default out of the settings file", () => {
+    const { dir, file } = fileWith("kimi-k3[1m]");
+    try {
+      expect(currentHostModel(file)).toBe("kimi-k3[1m]");
+    } finally { wipe(dir); }
+  });
+
+  it("re-reads as soon as the file changes (mtime invalidation)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mgw-host-"));
+    const file = join(dir, "settings.json");
+    try {
+      writeFileSync(file, JSON.stringify({ env: { ANTHROPIC_MODEL: "first" } }), "utf8");
+      expect(currentHostModel(file)).toBe("first");
+      writeFileSync(file, JSON.stringify({ env: { ANTHROPIC_MODEL: "second" } }), "utf8");
+      // identical length on purpose: the timestamp alone must be enough
+      const later = new Date(Date.now() + 5000);
+      utimesSync(file, later, later);
+      expect(currentHostModel(file)).toBe("second");
+    } finally { wipe(dir); }
+  });
+
+  it("a corrupt file yields no host knowledge and does not poison the cache", () => {
+    const { dir, file } = fileWith(undefined);
+    try {
+      expect(currentHostModel(file)).toBeUndefined();
+      writeFileSync(file, JSON.stringify({ env: { ANTHROPIC_MODEL: "recovered" } }), "utf8");
+      const later = new Date(Date.now() + 5000);
+      utimesSync(file, later, later);
+      expect(currentHostModel(file)).toBe("recovered");
+    } finally { wipe(dir); }
+  });
+
+  it("two files never share a cache entry even with identical content", () => {
+    const a = fileWith("model-a");
+    const b = fileWith("model-b");
+    try {
+      const stamp = new Date(1_700_000_000_000);
+      utimesSync(a.file, stamp, stamp);
+      utimesSync(b.file, stamp, stamp);
+      expect(currentHostModel(a.file)).toBe("model-a");
+      expect(currentHostModel(b.file)).toBe("model-b");
+    } finally { wipe(a.dir); wipe(b.dir); }
+  });
+
+  it("an unreadable path is simply no host model", () => {
+    expect(currentHostModel("/nonexistent/mgw-settings.json")).toBeUndefined();
+  });
+});
+
+describe("withHostModel", () => {
+  const base = [
+    { id: "glm-5.3-flash[1m]", name: "GLM 5.3 Flash" },
+    { id: "qwen3.8-flash[1m]", name: "Qwen 3.8 Flash" },
+  ];
+
+  it("puts the current host model first", () => {
+    expect(withHostModel(base, "deepseek-v4-pro[1m]").map((m) => m.id))
+      .toEqual(["deepseek-v4-pro[1m]", "glm-5.3-flash[1m]", "qwen3.8-flash[1m]"]);
+  });
+
+  it("moves an already-listed model to the front instead of duplicating it", () => {
+    expect(withHostModel(base, "qwen3.8-flash[1m]").map((m) => m.id))
+      .toEqual(["qwen3.8-flash[1m]", "glm-5.3-flash[1m]"]);
+    // its original label survives
+    expect(withHostModel(base, "qwen3.8-flash[1m]")[0]?.name).toBe("Qwen 3.8 Flash");
+  });
+
+  it("no host model means the configured list unchanged", () => {
+    expect(withHostModel(base, undefined)).toBe(base);
+    expect(withHostModel(base, "")).toBe(base);
   });
 });

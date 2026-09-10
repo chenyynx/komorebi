@@ -4,7 +4,7 @@
  * @module config
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 
 export interface ModelEntry {
   readonly id: string;
@@ -55,7 +55,14 @@ export type PermissionPreset =
   | "workspace-write"
   | "danger-full-access";
 
-/** Read env.ANTHROPIC_MODEL out of a Claude Code settings file. Never throws. */
+/**
+ * Read env.ANTHROPIC_MODEL out of a Claude Code settings file. Never throws.
+ *
+ * `sm` (~/bin/switch-model) rewrites that file's env block on every provider
+ * switch and does NOT touch pm2 — so a cached process.env / boot-time read goes
+ * stale. The config object is frozen at startup, which is exactly why callers
+ * that need to stay current must use currentHostModel() below instead.
+ */
 function readHostModel(path: string): string | undefined {
   try {
     const raw = JSON.parse(readFileSync(path, "utf8")) as { env?: Record<string, unknown> };
@@ -65,6 +72,47 @@ function readHostModel(path: string): string | undefined {
     // missing / unreadable / invalid JSON → no host knowledge, callers fall back
     return undefined;
   }
+}
+
+let hostCache: { readonly key: string; readonly model: string | undefined } | undefined;
+
+/**
+ * The host's current default model, re-read only when the file actually changed.
+ * Cheap enough to call per request; a corrupt file yields undefined (callers
+ * fall back) without poisoning the cache, and the path is part of the key so two
+ * files that happen to share size and mtime can never share an entry.
+ */
+export function currentHostModel(path: string): string | undefined {
+  let stat;
+  try {
+    stat = statSync(path);
+  } catch {
+    hostCache = undefined;
+    return undefined;
+  }
+  const key = `${path}:${stat.mtimeMs}:${stat.size}`;
+  if (hostCache !== undefined && hostCache.key === key) return hostCache.model;
+  const model = readHostModel(path);
+  hostCache = { key, model };
+  return model;
+}
+
+/**
+ * The model set as it stands RIGHT NOW: the host's current model first (the app
+ * renders this list verbatim), then the configured whitelist minus duplicates.
+ * A provider switch therefore reaches the phone without any restart.
+ */
+export function withHostModel(
+  models: readonly ModelEntry[],
+  hostModel: string | undefined,
+): readonly ModelEntry[] {
+  if (hostModel === undefined || hostModel === "") return models;
+  const rest = models.filter((m) => m.id !== hostModel);
+  const declared = models.find((m) => m.id === hostModel);
+  return [
+    { id: hostModel, name: declared?.name ?? "跟随 sm（宿主默认）" },
+    ...rest,
+  ];
 }
 
 /**
@@ -140,6 +188,8 @@ export function loadConfig(overrides?: Partial<Config>): Config {
     workspaceRoot: strEnv("MGW_WORKSPACE_ROOT", "/home/ubuntu"),
     sessionCwdRoot: strEnv("MGW_SESSION_CWD_ROOT", "/home/ubuntu"),
     models: overrides?.models ?? resolveModels(hostModel),
+    // NOTE: frozen at boot on purpose; live consumers must call
+    // currentHostModel(hostSettingsPath) + withHostModel(...) instead
     hostSettingsPath,
     hostModel,
     defaultPermission: "workspace-write",

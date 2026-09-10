@@ -43,7 +43,14 @@ import { ClaudeRunner, type PermissionOutcome, type SdkQueryFn } from "../backen
 import { pageHistory } from "../backend/history.js";
 import { schemeAEvent } from "../protocol/wire-events.js";
 import { TranscriptReader, transcriptPath } from "../backend/transcript.js";
-import { resolveSpawnModel, type Config, type PermissionPreset } from "../config.js";
+import {
+  currentHostModel,
+  resolveSpawnModel,
+  withHostModel,
+  type Config,
+  type ModelEntry,
+  type PermissionPreset,
+} from "../config.js";
 
 interface PendingApproval {
   readonly rpcId: string;
@@ -80,10 +87,11 @@ export class SessionOrchestrator {
     private readonly registry: SessionRegistry,
     private readonly broadcaster: EventBroadcaster,
     queryFn: SdkQueryFn,
+    transcript?: TranscriptReader,
   ) {
     this.settingsPath = join(config.dataDir, "settings.json");
     this.settings = this.loadSettings();
-    this.transcript = new TranscriptReader({
+    this.transcript = transcript ?? new TranscriptReader({
       readFile: (p) => readFileSync(p, "utf8"),
       stat: (p) => statSync(p),
       exists: (p) => existsSync(p),
@@ -163,6 +171,33 @@ export class SessionOrchestrator {
     return { adopted: false, replayedEvents: replayed, seq: existing.nextSeq };
   }
 
+  /**
+   * Boot-time title heal. Sessions persisted before the title rule have no
+   * title at all, and the phone then falls back to the cwd basename — that is
+   * the "标题怎么是工作目录" symptom. Derive from the first user message in the
+   * Claude Code transcript; any read failure simply means "not healed" (R3).
+   */
+  deriveMissingTitles(): number {
+    let healed = 0;
+    for (const state of this.registry.all()) {
+      if (state.metadata.title !== undefined) continue;
+      const cc = state.metadata.ccSessionId;
+      if (cc === undefined) continue;
+      try {
+        const items = this.transcript.read(transcriptPath(HOME, state.metadata.cwd, cc));
+        const first = items.find((item) => item.type === "user/message");
+        const text = (first as { data?: { text?: unknown } } | undefined)?.data?.text;
+        if (typeof text === "string" && text.trim() !== "") {
+          state.adoptTitle(text.replace(/\s+/g, " ").trim().slice(0, 28));
+          healed++;
+        }
+      } catch {
+        // R3: a broken transcript must never break the boot
+      }
+    }
+    return healed;
+  }
+
   /** Read-only view for the restart gate (F5): what is live on this process. */
   preflightSnapshot(): readonly Record<string, unknown>[] {
     return this.registry.all().map((state) => ({
@@ -240,7 +275,7 @@ export class SessionOrchestrator {
           JSON.stringify(
             defaultModelFrame({
               provider: this.settings.defaultModel?.provider ?? "claude-code",
-              model: this.settings.defaultModel?.model ?? this.config.models[0]?.id ?? "",
+              model: this.settings.defaultModel?.model ?? this.hotModels()[0]?.id ?? "",
               ...(this.settings.defaultModel?.reasoningEffort !== undefined
                 ? { reasoningEffort: this.settings.defaultModel.reasoningEffort }
                 : {}),
@@ -409,7 +444,7 @@ export class SessionOrchestrator {
     // A stale explicit default must never pin a model the current upstream
     // rejects — dropping it lets the host's ANTHROPIC_MODEL (pp's `sm`) win.
     const wanted = state.metadata.nextModel ?? this.settings.defaultModel?.model;
-    const model = resolveSpawnModel(wanted, this.config.models);
+    const model = resolveSpawnModel(wanted, this.hotModels());
     if (wanted !== undefined && model === undefined) {
       console.warn(`[dsh-cc-mgw] ignoring model "${wanted}" (not in the current whitelist); inheriting the host default`);
     }
@@ -536,7 +571,7 @@ export class SessionOrchestrator {
   }
 
   private handleSelectModel(conn: AuthenticatedConnection, frame: Extract<ValidatedFrame, { type: "select-model" }>): void {
-    if (!this.config.models.some((m) => m.id === frame.frame.model)) {
+    if (!this.hotModels().some((m) => m.id === frame.frame.model)) {
       conn.ws.send(JSON.stringify(errorFrame(ERROR_CODES.MODEL_UNAVAILABLE, frame.frame.model, "select-model", frame.frame.sessionId)));
       return;
     }
@@ -679,18 +714,20 @@ export class SessionOrchestrator {
   }
 
   private buildModels(sessionId?: string): OutboundFrame {
+    // hot, not the frozen boot list: pp switches providers with `sm`, which only
+    // rewrites ~/.claude/settings.json — pm2 is never touched
     const groups = [
       {
         id: "claude-code",
         name: "Claude Code",
-        models: this.config.models.map((m) => ({ id: m.id, name: m.name })),
+        models: this.hotModels().map((m) => ({ id: m.id, name: m.name })),
       },
     ];
     const state = sessionId !== undefined ? this.registry.get(sessionId) : undefined;
     if (state === undefined) {
       return modelsFrame({ groups, failures: [] });
     }
-    const currentModel = state.metadata.nextModel ?? this.settings.defaultModel?.model ?? this.config.models[0]?.id;
+    const currentModel = state.metadata.nextModel ?? this.settings.defaultModel?.model ?? this.hotModels()[0]?.id;
     if (currentModel === undefined) return modelsFrame({ groups, failures: [] });
     return modelsFrame({
       current: { provider: "claude-code", model: currentModel },
@@ -698,6 +735,15 @@ export class SessionOrchestrator {
       groups,
       failures: [],
     });
+  }
+
+  /**
+   * The model set as it stands right now: the host's current default (pp's `sm`)
+   * leads, then the configured whitelist. Reading the settings file is cached by
+   * path+mtime+size, so this is cheap enough to call per request and per frame.
+   */
+  private hotModels(): readonly ModelEntry[] {
+    return withHostModel(this.config.models, currentHostModel(this.config.hostSettingsPath));
   }
 
   private buildPermissionOptions(sessionId?: string): OutboundFrame {
