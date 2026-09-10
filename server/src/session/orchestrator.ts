@@ -6,7 +6,7 @@
  * @module session/orchestrator
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AuthenticatedConnection } from "../ws/server.js";
@@ -66,7 +66,6 @@ export class SessionOrchestrator {
   private queues = new Map<string, QueueItem[]>();
   private pendingApprovals = new Map<string, PendingApproval>();
   private workspaceIds = new Map<string, string>(); // workspaceId → path
-  private workspaceSeq = 0;
   private settings: {
     defaultModel?: { provider: string; model: string; reasoningEffort?: string };
     defaultPermission: PermissionPreset;
@@ -727,6 +726,10 @@ export class SessionOrchestrator {
   }
 
   private buildWorkspaces(): OutboundFrame {
+    // 工作区表是内存态：重启走的是 registry.restore（不经 ensureWorkspace），凡是在自定义目录
+    // 里跑过的会话都会失去归属 → 客户端按"不在任何工作区 sessionIds 里"把它们塞进「未分组」。
+    // 每次构建按可见会话的 cwd 补齐归属（只读会话列表，绝不凭空造会话）。
+    for (const session of this.registry.list()) this.ensureWorkspace(session.cwd);
     const entries: {
       workspaceId: string;
       path: string;
@@ -766,7 +769,9 @@ export class SessionOrchestrator {
 
   private ensureWorkspace(path: string): string {
     for (const [id, p] of this.workspaceIds) if (p === path) return id;
-    const id = `w${++this.workspaceSeq}`;
+    // id 由路径派生：同一目录在任何一次启动里都是同一个工作区。自增序号在重启后会重新分配，
+    // 手机端记住的 selectedWorkspaceId 就会指向别的目录（分组选择漂移）。
+    const id = `w-${createHash("sha256").update(path).digest("hex").slice(0, 8)}`;
     this.workspaceIds.set(id, path);
     return id;
   }

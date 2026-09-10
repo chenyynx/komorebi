@@ -603,3 +603,28 @@ describe("connect-time baselines (official lane gate)", () => {
     client.ws.close();
   });
 });
+
+describe("workspace membership after a restore (no orphaning into 未分组)", () => {
+  it("a restored session with a custom cwd is listed inside that workspace", async () => {
+    const restored = `restored-${Math.random().toString(36).slice(2, 10)}`;
+    const client = await pairedOn(port);
+    // registry.restore 的入口（boot 与 F4 救援走的是同一条路：不走 ensureWorkspace）
+    const res = await fetch(`http://127.0.0.1:${port}/mgw/adopt`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessionId: restored, ccSessionId: "cc-not-on-disk", cwd: "/home/ubuntu/proj-demo" }),
+    });
+    expect(res.status).toBe(200);
+
+    client.ws.send(JSON.stringify({ type: "workspaces" }));
+    const frame = await client.next<{ items: { workspaceId: string; path: string; sessionIds: string[] }[] }>({
+      kind: "workspaces",
+    });
+    const grouped = new Set(frame.items.flatMap((w) => w.sessionIds));
+    // 客户端判据：不在任何工作区 sessionIds 里的会话，会被塞进「未分组」（AppStore.ungroupedSessions）
+    expect(grouped.has(restored), "restore 出来的会话不能失去归属").toBe(true);
+    const home = frame.items.find((w) => w.path === "/home/ubuntu/proj-demo");
+    expect(home?.sessionIds).toContain(restored);
+    client.ws.close();
+  });
+});
