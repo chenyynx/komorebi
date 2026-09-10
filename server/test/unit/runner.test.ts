@@ -55,15 +55,16 @@ describe("spawn options", () => {
   it("always requests includePartialMessages (streaming pipeline, plan D1)", () => {
     let captured: CapturedSpawn | undefined;
     const { runner } = makeRunner([{ type: "result", subtype: "success", usage: {} }], (c) => (captured = c));
-    runner.start({ preset: "workspace-write", canUseTool: async () => ({ behavior: "allow" }) });
+    runner.start({ text: "hi", preset: "workspace-write", canUseTool: async () => ({ behavior: "allow" }) });
     expect(captured?.options.includePartialMessages).toBe(true);
     expect(captured?.options.cwd).toBe("/home/ubuntu/work");
+    expect(captured?.options.prompt).toBe("hi");
   });
 
   it("passes model and resume when provided (select-model / reconnect semantics)", () => {
     let captured: CapturedSpawn | undefined;
     const { runner } = makeRunner([{ type: "result", subtype: "success", usage: {} }], (c) => (captured = c));
-    runner.start({ model: "glm-5.3-flash[1m]", resume: "cc-uuid-1", preset: "workspace-write", canUseTool: async () => ({ behavior: "allow" }) });
+    runner.start({ text: "hi", model: "glm-5.3-flash[1m]", resume: "cc-uuid-1", preset: "workspace-write", canUseTool: async () => ({ behavior: "allow" }) });
     expect(captured?.options.model).toBe("glm-5.3-flash[1m]");
     expect(captured?.options.resume).toBe("cc-uuid-1");
     expect(captured?.options.permissionMode).toBe("acceptEdits");
@@ -72,7 +73,7 @@ describe("spawn options", () => {
   it("permission preset is forwarded per the three-mode mapping", () => {
     let captured: CapturedSpawn | undefined;
     const { runner } = makeRunner([{ type: "result", subtype: "success", usage: {} }], (c) => (captured = c));
-    runner.start({ preset: "danger-full-access", canUseTool: async () => ({ behavior: "allow" }) });
+    runner.start({ text: "hi", preset: "danger-full-access", canUseTool: async () => ({ behavior: "allow" }) });
     expect(captured?.options.permissionMode).toBe("bypassPermissions");
   });
 });
@@ -92,7 +93,7 @@ describe("full pipeline (fake SDK scripted turn)", () => {
       { type: "result", subtype: "success", usage: { input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 50, cache_creation_input_tokens: 0 } },
     ];
     const { runner, state } = makeRunner(script);
-    runner.start({ preset: "workspace-write", canUseTool: async () => ({ behavior: "allow" }) });
+    runner.start({ text: "hi", preset: "workspace-write", canUseTool: async () => ({ behavior: "allow" }) });
     await vi.waitFor(() => expect(runner.isRunning).toBe(false));
 
     const events = eventsOf(state);
@@ -124,7 +125,7 @@ describe("full pipeline (fake SDK scripted turn)", () => {
       { type: "result", subtype: "success", usage: {} },
     ];
     const { runner, state } = makeRunner(script);
-    runner.start({ preset: "workspace-write", canUseTool: async () => ({ behavior: "allow" }) });
+    runner.start({ text: "hi", preset: "workspace-write", canUseTool: async () => ({ behavior: "allow" }) });
     await vi.waitFor(() => expect(runner.isRunning).toBe(false));
     expect(eventsOf(state).some((e) => e.type === "user/message")).toBe(false);
   });
@@ -143,7 +144,7 @@ describe("error path (R2 fail-open)", () => {
       }),
       now: () => NOW,
     });
-    runner.start({ preset: "workspace-write", canUseTool: async () => ({ behavior: "allow" }) });
+    runner.start({ text: "hi", preset: "workspace-write", canUseTool: async () => ({ behavior: "allow" }) });
     await vi.waitFor(() => expect(runner.isRunning).toBe(false));
     const events = eventsOf(state);
     const last = events[events.length - 1];
@@ -172,7 +173,7 @@ describe("abort (session-cancel semantics)", () => {
       }),
       now: () => NOW,
     });
-    runner.start({ preset: "workspace-write", canUseTool: async () => ({ behavior: "allow" }) });
+    runner.start({ text: "hi", preset: "workspace-write", canUseTool: async () => ({ behavior: "allow" }) });
     expect(runner.abort()).toBe(true);
     await vi.waitFor(() => expect(runner.isRunning).toBe(false));
     expect(aborted).toBe(true);
@@ -189,7 +190,7 @@ describe("canUseTool wiring", () => {
     let captured: CapturedSpawn | undefined;
     const { runner } = makeRunner([{ type: "result", subtype: "success", usage: {} }], (c) => (captured = c));
     const callback = async () => ({ behavior: "allow" as const });
-    runner.start({ preset: "workspace-write", canUseTool: callback });
+    runner.start({ text: "hi", preset: "workspace-write", canUseTool: callback });
     expect(captured?.options.canUseTool).toBe(callback);
   });
 });

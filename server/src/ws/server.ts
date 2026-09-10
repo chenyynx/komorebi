@@ -19,6 +19,8 @@ export type Lane = "control" | "conversation";
 export interface AuthenticatedConnection {
   readonly ws: WebSocket;
   readonly lane: Lane;
+  /** true = opened via explicit X-DSH-Channel (lane-restricted); false = legacy single connection. */
+  readonly split: boolean;
   readonly deviceId: string;
   readonly deviceName: string;
 }
@@ -26,6 +28,8 @@ export interface AuthenticatedConnection {
 export interface FrameDispatch {
   /** Called for each validated inbound frame on any authenticated connection. */
   onFrame(conn: AuthenticatedConnection, frame: unknown): void;
+  /** Called right after the handshake (paired/hello delivered). */
+  onOpen?(conn: AuthenticatedConnection): void;
   /** Called when a connection closes for cleanup. */
   onClose(conn: AuthenticatedConnection, code: number, reason: string): void;
 }
@@ -51,9 +55,14 @@ export class GatewayServer {
     this.wss.on("connection", (ws, req) => this.handleConnection(ws, req));
   }
 
-  listen(): Promise<void> {
-    return new Promise((resolve) => {
-      this.http.listen(this.config.port, "127.0.0.1", () => resolve());
+  /** Bind loopback; supports port 0 (OS-assigned) — resolves with the actual port. */
+  listen(): Promise<number> {
+    return new Promise((resolve, reject) => {
+      this.http.once("error", reject);
+      this.http.listen(this.config.port, "127.0.0.1", () => {
+        const address = this.http.address();
+        resolve(typeof address === "object" && address !== null ? address.port : this.config.port);
+      });
     });
   }
 
@@ -107,12 +116,13 @@ export class GatewayServer {
       deviceName = verify.device.name;
     }
 
-    const lane = this.laneOf(req);
-    const conn: AuthenticatedConnection = { ws, lane, deviceId, deviceName };
+    const { lane, split } = this.laneOf(req);
+    const conn: AuthenticatedConnection = { ws, lane, split, deviceId, deviceName };
     this.connections.add(conn);
 
     // hello immediately after (protocol: pushed on connect)
     ws.send(JSON.stringify(helloFrame(this.config.port, this.connections.size)));
+    this.dispatch.onOpen?.(conn);
 
     ws.on("message", (data) => {
       let parsed: unknown;
@@ -146,10 +156,11 @@ export class GatewayServer {
     });
   }
 
-  private laneOf(req: IncomingMessage): Lane {
+  private laneOf(req: IncomingMessage): { lane: Lane; split: boolean } {
     const channel = req.headers["x-dsh-channel"];
-    if (typeof channel === "string" && channel === "conversation") return "conversation";
-    return "control";
+    if (typeof channel === "string" && channel === "conversation") return { lane: "conversation", split: true };
+    if (typeof channel === "string" && channel === "control") return { lane: "control", split: true };
+    return { lane: "control", split: false };
   }
 
   /** Conversation lane accepts only the protocol §split-channels message set. */

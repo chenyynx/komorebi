@@ -359,3 +359,30 @@ export function contextUsageFrame(sessionId: string, payload: Record<string, unk
 export function sessionStatsFrame(sessionId: string, asOfSeq: number, payload: Record<string, unknown>): OutboundFrame {
   return { kind: "session-stats", sessionId, asOfSeq, ...payload };
 }
+
+export function providersFrame(): OutboundFrame {
+  return {
+    kind: "providers",
+    providers: [{ provider: "claude-code", displayName: "Claude Code", declared: true }],
+  };
+}
+
+export function sessionCreatedFrame(requestId: string, sessionId: string): OutboundFrame {
+  return { kind: "session-created", requestId, sessionId };
+}
+
+export function agentPresetsFrame(): OutboundFrame {
+  return {
+    kind: "agent-presets",
+    presets: [{ id: "claude-code", isDefault: true, authorable: false, hasDocument: false }],
+    agentPresetDefault: "claude-code",
+  };
+}
+
+export function defaultsFrame(permissionDefault: string): OutboundFrame {
+  return { kind: "defaults", agentPresetDefault: "claude-code", permissionDefault };
+}
+
+export function setDefaultFrame(target: string, value: string): OutboundFrame {
+  return { kind: "set-default", target, value, applied: true };
+}

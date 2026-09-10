@@ -48,6 +48,8 @@ export interface MessageFrame extends InboundBase {
 }
 
 export interface HistoryFrame extends InboundBase {
+  /** Guaranteed by requireSessionId at parse time. */
+  readonly sessionId: string;
   readonly beforeSeq?: number | undefined;
   readonly maxMessages?: number | undefined;
   readonly maxBytes?: number | undefined;
@@ -55,12 +57,14 @@ export interface HistoryFrame extends InboundBase {
 }
 
 export interface SelectModelFrame extends InboundBase {
+  readonly sessionId: string;
   readonly provider: string;
   readonly model: string;
   readonly reasoningEffort?: string | undefined;
 }
 
 export interface QueueUpdateFrame extends InboundBase {
+  readonly sessionId: string;
   readonly itemId: string;
   readonly action: "edit" | "remove" | "steer";
   readonly text?: string | undefined;
@@ -76,12 +80,14 @@ export interface QuestionAnswerFrame extends InboundBase {
 }
 
 export interface ApprovalResponseFrame extends InboundBase {
+  readonly sessionId: string;
   readonly rpcId: string;
   readonly approvalId: string;
   readonly outcome: "allowed-once" | "rejected";
 }
 
 export interface GoalEditFrame extends InboundBase {
+  readonly sessionId: string;
   readonly ref: { id: string; revision: number };
   readonly objective?: string | undefined;
   readonly maxGoalRounds?: number | undefined;

@@ -7,7 +7,7 @@
  */
 
 import type { SessionState } from "../domain/state.js";
-import type { SessionEventType } from "../domain/events.js";
+import type { SessionEvent, SessionEventType } from "../domain/events.js";
 import { EventTranslator, type DraftEvent, type SdkMessageLike } from "./translator.js";
 import { DeltaCoalescer, type CoalescedChunk } from "./coalescer.js";
 
@@ -18,6 +18,8 @@ export interface SdkQueryHandle extends AsyncIterable<SdkMessageLike> {
 
 export interface SdkSpawnOptions {
   readonly cwd: string;
+  /** Plain text or content blocks (text + base64 images). */
+  readonly prompt: string | readonly Record<string, unknown>[];
   readonly model?: string | undefined;
   readonly resume?: string | undefined;
   readonly permissionMode: "default" | "acceptEdits" | "bypassPermissions" | "plan";
@@ -55,6 +57,13 @@ export function presetToMode(preset: "read-only" | "workspace-write" | "danger-f
 export interface RunnerDeps {
   readonly query: SdkQueryFn;
   readonly now: () => number;
+  /** Fired once the turn fully settles (queue drain point for the orchestrator). */
+  onIdle?: (() => void) | undefined;
+}
+
+/** Emitted when the runner produced events (used by the orchestrator fan-out). */
+export interface RunnerEvents {
+  onEvents(events: readonly SessionEvent[]): void;
 }
 
 export class ClaudeRunner {
@@ -67,6 +76,7 @@ export class ClaudeRunner {
   constructor(
     private readonly state: SessionState,
     private readonly deps: RunnerDeps,
+    private readonly events?: RunnerEvents,
   ) {}
 
   get isRunning(): boolean {
@@ -89,6 +99,8 @@ export class ClaudeRunner {
 
   /** Start one prompt turn; the event pipeline is wired into the session state. */
   start(options: {
+    text: string;
+    images?: readonly { mediaType: string; data: string }[] | undefined;
     model?: string | undefined;
     resume?: string | undefined;
     preset: "read-only" | "workspace-write" | "danger-full-access";
@@ -103,8 +115,19 @@ export class ClaudeRunner {
     this.coalescer = new DeltaCoalescer((chunks) => this.flushChunks(chunks));
     this.state.setRunning(true);
 
+    const prompt: string | readonly Record<string, unknown>[] =
+      options.images !== undefined && options.images.length > 0
+        ? [
+            { type: "text", text: options.text },
+            ...options.images.map((image) => ({
+              type: "image",
+              source: { type: "base64", media_type: image.mediaType, data: image.data },
+            })),
+          ]
+        : options.text;
     const handle = this.deps.query({
       cwd: this.state.metadata.cwd,
+      prompt,
       ...(options.model !== undefined ? { model: options.model } : {}),
       ...(options.resume !== undefined ? { resume: options.resume } : {}),
       permissionMode: presetToMode(options.preset),
@@ -128,7 +151,7 @@ export class ClaudeRunner {
       }
     } catch (error) {
       // terminal error frame; transcript of a half turn stays in the buffer
-      this.state.emit("turn/end" as SessionEventType, this.epochSeconds(), {
+      this.emitEvent("turn/end", {
         turn: translator.currentTurn,
         step: translator.currentStep,
         reason: `error: ${(error as Error).message}`,
@@ -137,6 +160,7 @@ export class ClaudeRunner {
       this.coalescer?.flushAll();
       this.state.setRunning(false);
       this.handle = undefined;
+      this.deps.onIdle?.();
     }
   }
 
@@ -166,14 +190,13 @@ export class ClaudeRunner {
           cacheWriteTokens: this.aggregatedUsage.cacheWriteTokens + (usage["cacheWriteTokens"] ?? 0),
         };
       }
-      this.state.emit(draft.type, this.epochSeconds(), draft.data);
+      this.emitEvent(draft.type, draft.data);
     }
   }
 
   private flushChunks(chunks: readonly CoalescedChunk[]): void {
-    const nowSec = this.epochSeconds();
     for (const chunk of chunks) {
-      this.state.emit("assistant/chunk", nowSec, {
+      this.emitEvent("assistant/chunk", {
         turn: chunk.turn,
         step: chunk.step,
         chunkType: chunk.chunkType,
@@ -187,6 +210,12 @@ export class ClaudeRunner {
     if (this.handle === undefined) return false;
     this.handle.abort();
     return true;
+  }
+
+  private emitEvent(type: SessionEventType, data: Record<string, unknown>): SessionEvent {
+    const event = this.state.emit(type, this.epochSeconds(), data);
+    this.events?.onEvents([event]);
+    return event;
   }
 
   private epochSeconds(): number {
