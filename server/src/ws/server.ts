@@ -15,6 +15,14 @@ import { Config } from "../config.js";
 import { errorFrame, helloFrame, pairedFrame } from "../protocol/frames.js";
 import { validateInbound } from "../protocol/validation.js";
 
+/**
+ * 连接级诊断：没有它，网关对"手机到底有没有连上来、握手为什么被拒"完全失明
+ * （2026-09-10 事故排查时踩到：客户端侧报"打不开/超时"，服务端一条日志都没有）。
+ */
+function connLog(line: string): void {
+  console.log(`[ws] ${new Date().toISOString()} ${line}`);
+}
+
 export type Lane = "control" | "conversation";
 
 export interface AuthenticatedConnection {
@@ -168,6 +176,8 @@ export class GatewayServer {
       authorization: req.headers["authorization"],
     };
     const clientIp = req.socket.remoteAddress ?? "unknown";
+    const attemptDevice = req.headers["x-dsh-device-id"] as string | undefined;
+    connLog(`upgrade from=${clientIp} device=${attemptDevice ?? "(none)"} proto=${String(req.headers["sec-websocket-protocol"] ?? "")}`);
 
     // First connect: pairing subprotocol. Reconnect: bearer/dsh-auth token.
     const pairing = extractPairingFromRequest(headers);
@@ -177,6 +187,7 @@ export class GatewayServer {
     if (pairing.ok) {
       const consumed = this.devices.consumePairingCode(pairing.pairingCode, pairing.deviceId, "iPhone");
       if (!consumed.ok) {
+        connLog(`reject code=4001 pairing-rejected reason=${consumed.reason} device=${pairing.deviceId} from=${clientIp}`);
         ws.close(4001, `pairing rejected: ${consumed.reason}`);
         return;
       }
@@ -187,11 +198,13 @@ export class GatewayServer {
     } else {
       const auth = extractAuthFromRequest(headers);
       if (!auth.ok) {
+        connLog(`reject code=4001 missing-credential device=${attemptDevice ?? "(none)"} from=${clientIp}`);
         ws.close(4001, "missing credential");
         return;
       }
       const verify = this.devices.verifyToken(auth.token, clientIp);
       if (!verify.ok) {
+        connLog(`reject code=4003 auth-failed reason=${verify.reason} device=${attemptDevice ?? "(none)"} from=${clientIp}`);
         ws.close(4003, `auth failed: ${verify.reason}`);
         return;
       }
@@ -203,11 +216,25 @@ export class GatewayServer {
     const conn: AuthenticatedConnection = { ws, lane, split, deviceId, deviceName };
     this.connections.add(conn);
 
+    let inFrames = 0;
+    const inTypes: Record<string, number> = {};
+    let outFrames = 0;
+    let outBytes = 0;
+    const rawSend = ws.send.bind(ws) as (...args: unknown[]) => void;
+    const sendProxy = (...args: unknown[]): void => {
+      outFrames += 1;
+      outBytes += String(args[0] ?? "").length;
+      rawSend(...args);
+    };
+    (ws as unknown as { send: typeof sendProxy }).send = sendProxy;
+    connLog(`open device=${deviceId} lane=${lane} split=${split} live=${this.connections.size}`);
+
     // hello immediately after (protocol: pushed on connect)
     ws.send(JSON.stringify(helloFrame(this.config.port, this.connections.size)));
     this.dispatch.onOpen?.(conn);
 
     ws.on("message", (data) => {
+      inFrames += 1;
       let parsed: unknown;
       try {
         parsed = JSON.parse(String(data));
@@ -217,6 +244,7 @@ export class GatewayServer {
       }
       const validated = validateInbound(parsed);
       if (!validated.ok) {
+        connLog(`reject-frame device=${deviceId} code=${validated.code}`);
         ws.send(
           JSON.stringify(
             errorFrame(validated.code, validated.message, typeof parsed === "object" && parsed !== null && "type" in parsed ? String((parsed as Record<string, unknown>)["type"]) : undefined),
@@ -230,11 +258,16 @@ export class GatewayServer {
         ws.send(JSON.stringify(wrongLaneFrame));
         return;
       }
+      inTypes[validated.value.type] = (inTypes[validated.value.type] ?? 0) + 1;
       this.dispatch.onFrame(conn, validated.value);
     });
 
     ws.on("close", (code, reason) => {
       this.connections.delete(conn);
+      const types = Object.entries(inTypes).map(([k, v]) => `${k}:${v}`).join(",") || "-";
+      connLog(
+        `close device=${deviceId} code=${code} reason=${reason.toString("utf8").slice(0, 80)} in=${inFrames}(${types}) out=${outFrames} outKB=${(outBytes / 1024).toFixed(1)} live=${this.connections.size}`,
+      );
       this.dispatch.onClose(conn, code, reason.toString("utf8"));
     });
   }
