@@ -548,3 +548,41 @@ describe("session-cancel semantics (§4)", () => {
     client.ws.close();
   });
 });
+
+describe("default-model control frames — client contract", () => {
+  it("save-default-model answers with a save-default-model frame carrying `saved`", async () => {
+    const client = await pairedOn(port);
+    client.ws.send(
+      JSON.stringify({ type: "save-default-model", provider: "claude-code", model: "glm-5.3-flash[1m]" }),
+    );
+    // 客户端等的就是这一帧（GatewayFrameRouter.swift:236）；回成 select-model = 请求永远不完成
+    const saved = await client.next<{ kind: string; saved: { provider: string; model: string } }>({
+      kind: "save-default-model",
+    });
+    expect(saved.saved).toEqual({ provider: "claude-code", model: "glm-5.3-flash[1m]" });
+    client.ws.close();
+  });
+
+  it("save-default-model echoes reasoningEffort when the request carries it", async () => {
+    const client = await pairedOn(port);
+    client.ws.send(
+      JSON.stringify({ type: "save-default-model", provider: "claude-code", model: "m", reasoningEffort: "high" }),
+    );
+    const saved = await client.next<{ saved: { provider: string; model: string; reasoningEffort?: string } }>({
+      kind: "save-default-model",
+    });
+    expect(saved.saved).toEqual({ provider: "claude-code", model: "m", reasoningEffort: "high" });
+    client.ws.close();
+  });
+
+  it("default-model answers under `selection`, never top-level provider/model", async () => {
+    const client = await pairedOn(port);
+    client.ws.send(JSON.stringify({ type: "default-model" }));
+    const frame = await client.next<{ kind: string; selection?: unknown; provider?: unknown }>({
+      kind: "default-model",
+    });
+    expect(frame.selection).toBeTruthy();
+    expect(frame.provider).toBeUndefined();
+    client.ws.close();
+  });
+});

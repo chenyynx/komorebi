@@ -191,6 +191,45 @@ export function selectModelFrame(selected: {
   return frame;
 }
 
+/**
+ * `default-model` 响应：客户端读 frame.selection
+ *（fixtures: {"kind":"default-model","selection":{"provider":"openai","model":"gpt-5"}}）。
+ */
+export function defaultModelFrame(selection: {
+  provider: string;
+  model: string;
+  reasoningEffort?: string;
+}): OutboundFrame {
+  const frame: OutboundFrame = {
+    kind: "default-model",
+    selection: { provider: selection.provider, model: selection.model },
+  };
+  if (selection.reasoningEffort !== undefined) {
+    (frame.selection as Record<string, unknown>).reasoningEffort = selection.reasoningEffort;
+  }
+  return frame;
+}
+
+/**
+ * `save-default-model` 响应：客户端读 frame.saved，并逐字比对请求里的
+ * provider/model/reasoningEffort（SharedSessionControlStore.defaultModelSaved）。
+ * 帧类型必须是 save-default-model —— 回成别的种类，这个请求就永远不完成。
+ */
+export function saveDefaultModelFrame(saved: {
+  provider: string;
+  model: string;
+  reasoningEffort?: string;
+}): OutboundFrame {
+  const frame: OutboundFrame = {
+    kind: "save-default-model",
+    saved: { provider: saved.provider, model: saved.model },
+  };
+  if (saved.reasoningEffort !== undefined) {
+    (frame.saved as Record<string, unknown>).reasoningEffort = saved.reasoningEffort;
+  }
+  return frame;
+}
+
 export function permissionOptionsFrame(payload: {
   sessionId?: string;
   options: readonly { value: string; name: string }[];

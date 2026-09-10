@@ -3,18 +3,21 @@
  *  - shared/src/commonTest/kotlin/com/clarklevis/dsh/shared/GatewayProtocolFixtures.kt（KMP 固定样例）
  *  - DeepSeekHarnessMobile/Core/GatewayFrameRouter.swift（Swift 解码路径）
  *  - DeepSeekHarnessMobileTests/GatewayProtocolTests.swift
- *  - 官方参考实现 ~/refs/dsh/dsh-plugin-mobile-gateway-main（PROTOCOL.md:80/606 + lib/index.mjs:628）
+ *  - 官方参考实现 ~/refs/dsh/dsh-plugin-mobile-gateway-main（PROTOCOL.md + lib/index.mjs）
  *
- * 为什么存在：2026-09-10 线上事故 —— `sessions` 帧我方发 `sessions:[...]`，客户端读
- * `items:[...]`（GatewayFrameRouter.swift:188 -> decodeItems(frame.items) /
- * SharedMobileStore.kt:209 -> frame.items.orEmpty()），于是 App 每次都合并到**空列表**：
- * 远端会话的 running 标记永不更新，用户重进会话永远看到"停止/暂停"按钮（无法再发消息）。
- * 这类"字段名漂移"不报错、不崩溃，只静默失效 —— 所以逐帧钉死键名。
+ * 为什么存在：2026-09-10 连续两起线上事故，都是"帧形状与客户端契约不符"的静默失效：
+ *  1) sessions 帧发 `sessions:[...]`，客户端读 `items:[...]`（GatewayFrameRouter.swift:188 /
+ *     SharedMobileStore.kt:209）→ App 合并到空列表，running 永不更新，重进会话永远卡"暂停键"。
+ *  2) save-default-model 回的是 select-model 帧（应为 save-default-model + saved）→
+ *     App 提示"save-default-model 请求超时，请检查 Mobile Gateway"，会话随之打不开。
+ * 这类偏差不报错、不崩溃，只静默失效，所以逐帧钉死键名。
  */
 import { describe, expect, it } from "vitest";
 import {
   agentPresetsFrame,
+  defaultModelFrame,
   helloFrame,
+  saveDefaultModelFrame,
   sessionsFrame,
   workspacesFrame,
 } from "../../src/protocol/frames.js";
@@ -24,6 +27,8 @@ const OFFICIAL = {
   sessions: '{"kind":"sessions","items":[]}',
   workspaces: '{"kind":"workspaces","items":[],"archivedSessionIds":[]}',
   agentPresets: '{"kind":"agent-presets","presets":[],"authorable":false,"hasDocument":false}',
+  defaultModel: '{"kind":"default-model","selection":{"provider":"openai","model":"gpt-5"}}',
+  saveDefaultModel: '{"kind":"save-default-model","saved":{"provider":"openai","model":"gpt-5"}}',
 } as const;
 
 function typeClass(value: unknown): string {
@@ -65,5 +70,24 @@ describe("wire parity with the client contract", () => {
 
   it("agent-presets exposes authorable/hasDocument at the top level (Swift reads frame.authorable)", () => {
     expectParity(agentPresetsFrame(), OFFICIAL.agentPresets, "agent-presets");
+  });
+
+  it("default-model answers under `selection` (Swift reads frame.selection)", () => {
+    const frame = defaultModelFrame({ provider: "claude-code", model: "glm-5.3-flash[1m]" }) as Record<string, unknown>;
+    expectParity(frame, OFFICIAL.defaultModel, "default-model");
+    expect(frame["provider"]).toBeUndefined();
+    expect(frame["selection"]).toEqual({ provider: "claude-code", model: "glm-5.3-flash[1m]" });
+  });
+
+  it("save-default-model answers as save-default-model + `saved` echoing the request (regression: request timeout)", () => {
+    const frame = saveDefaultModelFrame({ provider: "claude-code", model: "glm-5.3-flash[1m]" }) as Record<string, unknown>;
+    expectParity(frame, OFFICIAL.saveDefaultModel, "save-default-model");
+    expect(frame["kind"]).toBe("save-default-model");
+    expect(frame["saved"]).toEqual({ provider: "claude-code", model: "glm-5.3-flash[1m]" });
+  });
+
+  it("save-default-model echoes reasoningEffort verbatim (client compares it field by field)", () => {
+    const frame = saveDefaultModelFrame({ provider: "claude-code", model: "m", reasoningEffort: "high" }) as Record<string, unknown>;
+    expect(frame["saved"]).toEqual({ provider: "claude-code", model: "m", reasoningEffort: "high" });
   });
 });

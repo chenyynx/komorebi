@@ -29,7 +29,9 @@ import {
   subscribedFrame,
   workspacesFrame,
   agentPresetsFrame,
+  defaultModelFrame,
   defaultsFrame,
+  saveDefaultModelFrame,
   setDefaultFrame,
   type OutboundFrame,
 } from "../protocol/frames.js";
@@ -65,7 +67,10 @@ export class SessionOrchestrator {
   private pendingApprovals = new Map<string, PendingApproval>();
   private workspaceIds = new Map<string, string>(); // workspaceId → path
   private workspaceSeq = 0;
-  private settings: { defaultModel?: { provider: string; model: string }; defaultPermission: PermissionPreset };
+  private settings: {
+    defaultModel?: { provider: string; model: string; reasoningEffort?: string };
+    defaultPermission: PermissionPreset;
+  };
   private settingsPath: string;
   private transcript: TranscriptReader;
   /** Set by shutdown(): no new turns, no queue drains, queues dropped. */
@@ -227,13 +232,32 @@ export class SessionOrchestrator {
         conn.ws.send(JSON.stringify(providersFrame()));
         return;
       case "default-model":
-        conn.ws.send(JSON.stringify({ kind: "default-model", provider: this.settings.defaultModel?.provider ?? "claude-code", model: this.settings.defaultModel?.model ?? this.config.models[0]?.id ?? "" }));
+        // 客户端读 frame.selection（送顶层 provider/model 等于没回）
+        conn.ws.send(
+          JSON.stringify(
+            defaultModelFrame({
+              provider: this.settings.defaultModel?.provider ?? "claude-code",
+              model: this.settings.defaultModel?.model ?? this.config.models[0]?.id ?? "",
+              ...(this.settings.defaultModel?.reasoningEffort !== undefined
+                ? { reasoningEffort: this.settings.defaultModel.reasoningEffort }
+                : {}),
+            }),
+          ),
+        );
         return;
-      case "save-default-model":
-        this.settings = { ...this.settings, defaultModel: { provider: frame.provider, model: frame.model } };
+      case "save-default-model": {
+        // 2026-09-10 线上事故：这里回的是 select-model 帧，客户端等的 save-default-model 永不到达
+        // → App 提示"save-default-model 请求超时，请检查 Mobile Gateway"。回帧类型 + saved 必须都对。
+        const saved: { provider: string; model: string; reasoningEffort?: string } = {
+          provider: frame.provider,
+          model: frame.model,
+          ...(frame.reasoningEffort !== undefined ? { reasoningEffort: frame.reasoningEffort } : {}),
+        };
+        this.settings = { ...this.settings, defaultModel: saved };
         this.saveSettings();
-        conn.ws.send(JSON.stringify(selectModelFrame({ provider: frame.provider, model: frame.model })));
+        conn.ws.send(JSON.stringify(saveDefaultModelFrame(saved)));
         return;
+      }
       case "permission-options":
         conn.ws.send(JSON.stringify(this.buildPermissionOptions(frame.sessionId)));
         return;
@@ -717,9 +741,15 @@ export class SessionOrchestrator {
       return new Date(newest * 1000).toISOString();
     };
     // root workspace always present
-    const rootId = this.workspaceIds.get("__root__") ?? this.ensureWorkspace(this.config.workspaceRoot);
+    //（__root__ 只是别名：必须与真实条目合并，否则同一 workspaceId 会下发两条）
+    const rootPath = this.config.workspaceRoot;
+    let rootId = this.workspaceIds.get("__root__");
+    if (rootId === undefined) {
+      rootId = this.ensureWorkspace(rootPath);
+      this.workspaceIds.set("__root__", rootId);
+    }
     for (const [wsId, path] of this.workspaceIds) {
-      if (wsId === "__root__") continue;
+      if (wsId === "__root__" || path === rootPath) continue; // 根工作区在下方单独入列
       const sessionIds = this.registry.list().filter((s) => s.cwd === path).map((s) => s.sessionId);
       const stamp = stampFor(sessionIds);
       entries.push({ workspaceId: wsId, path, title: path.split("/").pop() ?? path, sessionIds, createdAt: stamp, updatedAt: stamp });
@@ -817,11 +847,14 @@ export class SessionOrchestrator {
 
   // ---------------------------------------------------------------- settings
 
-  private loadSettings(): { defaultModel?: { provider: string; model: string }; defaultPermission: PermissionPreset } {
+  private loadSettings(): {
+    defaultModel?: { provider: string; model: string; reasoningEffort?: string };
+    defaultPermission: PermissionPreset;
+  } {
     try {
       const raw = JSON.parse(readFileSync(this.settingsPath, "utf8")) as Record<string, unknown>;
       return {
-        ...(typeof raw.defaultModel === "object" && raw.defaultModel !== null ? { defaultModel: raw.defaultModel as { provider: string; model: string } } : {}),
+        ...(typeof raw.defaultModel === "object" && raw.defaultModel !== null ? { defaultModel: raw.defaultModel as { provider: string; model: string; reasoningEffort?: string } } : {}),
         defaultPermission: (typeof raw.defaultPermission === "string" ? raw.defaultPermission : "workspace-write") as PermissionPreset,
       };
     } catch {
