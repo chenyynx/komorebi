@@ -88,12 +88,14 @@ export class ClaudeRunner {
     readonly usage: UsageSnapshot;
     readonly unknownTypes: number;
     readonly skippedBlocks: number;
+    readonly droppedEmptyCanonicals: number;
   } {
     return {
       llmMs: this.ttftMs,
       usage: this.aggregatedUsage,
       unknownTypes: this.translator?.stats.unknownTypes ?? 0,
       skippedBlocks: this.translator?.stats.skippedBlocks ?? 0,
+      droppedEmptyCanonicals: this.translator?.stats.droppedEmptyCanonicals ?? 0,
     };
   }
 
@@ -167,9 +169,9 @@ export class ClaudeRunner {
   /** Route drafts: deltas to the coalescer, everything else straight to state. */
   private sinkDrafts(drafts: readonly DraftEvent[]): void {
     for (const draft of drafts) {
-      // wire order: pending streamed chunks must precede turn/end (client
-      // replaces the temp streaming message with the canonical one last)
-      if (draft.type === "turn/end") this.coalescer?.flushAll();
+      // wire order: pending streamed chunks must precede both the canonical and
+      // turn/end — once a turn-step key is finalized the client drops its chunks
+      if (draft.type === "turn/end" || draft.type === "assistant/message") this.coalescer?.flushAll();
       const chunkType = draft.data["chunkType"];
       if (draft.type === "assistant/chunk" && (chunkType === "text-delta" || chunkType === "reasoning-delta")) {
         this.coalescer?.push(

@@ -7,9 +7,9 @@
  * - user tool_result: {content, tool_use_id, type} from transcript
  */
 import { describe, expect, it } from "vitest";
-import { EventTranslator, type SdkMessageLike } from "../../src/backend/translator";
+import { EventTranslator, type SdkMessageLike, type TranslatorStats } from "../../src/backend/translator";
 
-function translateAll(messages: SdkMessageLike[]): { events: { type: string; data: Record<string, unknown> }[]; stats: { unknownTypes: number; skippedBlocks: number } } {
+function translateAll(messages: SdkMessageLike[]): { events: { type: string; data: Record<string, unknown> }[]; stats: TranslatorStats } {
   const translator = new EventTranslator();
   const events = messages.flatMap((m) =>
     translator.translate(m).map((d) => ({ type: d.type, data: d.data })),
@@ -29,11 +29,27 @@ describe("stream_event translation (SDK 0.3.267 raw Messages API forms)", () => 
     });
   });
 
-  it("thinking_delta → assistant/chunk reasoning-delta", () => {
+  it("thinking_delta carries its payload in `thinking` (measured SDK shape)", () => {
     const { events } = translateAll([
-      { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", text: "用户只发了1" } } },
+      { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "用户只发了1" } } },
     ]);
+    expect(events).toHaveLength(1);
     expect(events[0]?.data).toMatchObject({ chunkType: "reasoning-delta", text: "用户只发了1" });
+  });
+
+  it("thinking_delta with a legacy `text` field still streams (fallback)", () => {
+    const { events } = translateAll([
+      { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", text: "思考" } } },
+    ]);
+    expect(events[0]?.data).toMatchObject({ chunkType: "reasoning-delta", text: "思考" });
+  });
+
+  it("signature_delta and other delta kinds produce no wire chunks", () => {
+    const { events, stats } = translateAll([
+      { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "signature_delta", signature: "abc" } } },
+    ]);
+    expect(events).toHaveLength(0);
+    expect(stats.unknownTypes).toBe(0);
   });
 
   it("input_json_delta → tool-call-delta with bound callId from content_block_start", () => {
@@ -59,23 +75,44 @@ describe("stream_event translation (SDK 0.3.267 raw Messages API forms)", () => 
     expect(events[0]?.data).toMatchObject({ chunkType: "finish", finish: { reason: "end_turn" } });
   });
 
-  it("message_start/message_stop/content_block_stop emit nothing", () => {
+  it("content_block_stop emits nothing; message_start/message_stop alone carry no payload", () => {
     const { events } = translateAll([
-      { type: "stream_event", event: { type: "message_start" } },
+      { type: "stream_event", event: { type: "message_start", message: { id: "msg_a" } } },
       { type: "stream_event", event: { type: "content_block_stop", index: 0 } },
       { type: "stream_event", event: { type: "message_stop" } },
     ]);
     expect(events).toHaveLength(0);
   });
+
+  it("message_start snapshots the step: a mid-message tool_use bump does not move the canonical key", () => {
+    // client keys streams by turn-step: if the canonical carried the bumped
+    // step, the streamed text of the same message would never be finalized.
+    const { events } = translateAll([
+      { type: "stream_event", event: { type: "message_start", message: { id: "msg_a" } } },
+      { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "答" } } },
+      { type: "stream_event", event: { type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "call_1", name: "Read" } } },
+      { type: "assistant", message: { role: "assistant", id: "msg_a", content: [{ type: "text", text: "答案" }] } },
+      { type: "stream_event", event: { type: "message_stop" } },
+    ]);
+    const textChunk = events.find((e) => e.data["chunkType"] === "text-delta");
+    const canonical = events.find((e) => e.type === "assistant/message");
+    expect(textChunk?.data["step"]).toBe(0);
+    expect(canonical?.data["step"]).toBe(0);
+    const toolCall = events.find((e) => e.type === "tool/call");
+    expect(toolCall?.data["step"]).toBe(1); // tool calls still open their own step
+  });
 });
 
 describe("assistant canonical message (real transcript block forms)", () => {
   it("mixed text+thinking+tool_use → single assistant/message (canonical)", () => {
+    // canonical only after message_stop → exactly one, carrying the merged blocks
     const { events } = translateAll([
+      { type: "stream_event", event: { type: "message_start", message: { id: "msg_a" } } },
       {
         type: "assistant",
         message: {
           role: "assistant",
+          id: "msg_a",
           content: [
             { type: "thinking", thinking: "用户只发了1——测试通道", signature: "sigX" },
             { type: "text", text: "通道通了。" },
@@ -83,8 +120,9 @@ describe("assistant canonical message (real transcript block forms)", () => {
           ],
         },
       },
+      { type: "stream_event", event: { type: "message_stop" } },
     ]);
-    expect(events).toHaveLength(1);
+    expect(events.filter((e) => e.type === "assistant/message")).toHaveLength(1);
     expect(events[0]?.type).toBe("assistant/message");
     expect(events[0]?.data).toEqual({
       turn: 0,
@@ -95,12 +133,71 @@ describe("assistant canonical message (real transcript block forms)", () => {
     });
   });
 
-  it("unknown block types are counted, never thrown", () => {
-    const { events, stats } = translateAll([
-      { type: "assistant", message: { role: "assistant", content: [{ type: "future_block" } as never] } },
+  it("THE STREAMING REGRESSION (2026-09-10): CC splits one API message per block — one canonical, after every chunk", () => {
+    // Measured real SDK order (model qwen3.8-flash, includePartialMessages):
+    //   message_start(id) → thinking deltas → assistant[thinking] → text deltas
+    //   → assistant[text] → message_stop
+    // The old per-block canonical finalised the client's "0-0" stream key
+    // before the body streamed, so all 31 text chunks were dropped and the
+    // answer appeared in one shot.
+    const mk = (id: string, kind: string, payload: Record<string, unknown>): SdkMessageLike =>
+      ({ type: "assistant", message: { role: "assistant", id, content: [{ type: kind, ...payload } as never] } });
+    const { events } = translateAll([
+      { type: "system", subtype: "init", session_id: "cc-1" },
+      { type: "stream_event", event: { type: "message_start", message: { id: "msg_split" } } },
+      { type: "stream_event", event: { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "" } } },
+      { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "先想" } } },
+      mk("msg_split", "thinking", { thinking: "先想一下", signature: "s" }),
+      { type: "stream_event", event: { type: "content_block_stop", index: 0 } },
+      { type: "stream_event", event: { type: "content_block_start", index: 1, content_block: { type: "text", text: "" } } },
+      { type: "stream_event", event: { type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "你好" } } },
+      { type: "stream_event", event: { type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "，我是 Claude" } } },
+      mk("msg_split", "text", { text: "你好，我是 Claude。" }),
+      { type: "stream_event", event: { type: "content_block_stop", index: 1 } },
+      { type: "stream_event", event: { type: "message_stop" } },
     ]);
-    expect(events).toHaveLength(1); // assistant/message with empty fields
-    expect(stats.skippedBlocks).toBe(1);
+    const canonicals = events.filter((e) => e.type === "assistant/message");
+    expect(canonicals).toHaveLength(1);
+    expect(canonicals[0]?.data).toMatchObject({ turn: 0, step: 0, text: "你好，我是 Claude。", reasoning: "先想一下" });
+
+    // every streamed chunk of that turn-step must precede the canonical
+    const lastChunk = Math.max(...events.map((e, i) => (e.type === "assistant/chunk" ? i : -1)));
+    const canonicalIdx = events.findIndex((e) => e.type === "assistant/message");
+    expect(lastChunk).toBeLessThan(canonicalIdx);
+    // thinking actually streamed (bug: `thinking` field was never read)
+    expect(events.filter((e) => e.data["chunkType"] === "reasoning-delta")).toHaveLength(1);
+    expect(events.filter((e) => e.data["chunkType"] === "text-delta")).toHaveLength(2);
+  });
+
+  it("truncated stream (no message_stop) still lands its canonical before result frames", () => {
+    const { events } = translateAll([
+      { type: "stream_event", event: { type: "message_start", message: { id: "msg_cut" } } },
+      { type: "assistant", message: { role: "assistant", id: "msg_cut", content: [{ type: "text", text: "半截" } as never] } },
+      { type: "result", subtype: "success", usage: {} },
+    ]);
+    expect(events[0]?.type).toBe("assistant/message");
+    expect(events[0]?.data).toMatchObject({ text: "半截" });
+    expect(events.map((e) => e.type)).toEqual(["assistant/message", "assistant/chunk", "turn/end"]);
+  });
+
+  it("tool_result flushes the requesting message's canonical first (wire order)", () => {
+    const { events } = translateAll([
+      { type: "assistant", message: { role: "assistant", id: "msg_t", content: [{ type: "tool_use", id: "call_1", name: "Bash", input: {} } as never] } },
+      { type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "call_1", content: "ok" }] } },
+    ]);
+    expect(events.map((e) => e.type)).toEqual(["assistant/message", "tool/result"]);
+  });
+
+  it("unknown block types are counted; a content-free message emits NO canonical", () => {
+    // an empty canonical would freeze the client's turn-step key and drop the
+    // live chunks that follow it, so nothing renderable means nothing emitted.
+    const { events, stats } = translateAll([
+      { type: "assistant", message: { role: "assistant", id: "msg_u", content: [{ type: "future_block" } as never] } },
+      { type: "stream_event", event: { type: "message_stop" } },
+    ]);
+    expect(events).toHaveLength(0);
+    expect(stats.skippedBlocks).toBe(1); // the unknown block itself
+    expect(stats.droppedEmptyCanonicals).toBe(1); // and the empty assembly it left behind
   });
 });
 
@@ -165,9 +262,11 @@ describe("result → usage + turn end + lifecycle", () => {
 
   it("next prompt cycle opens turn 1 (turn lifecycle = prompt cycles)", () => {
     const { events } = translateAll([
-      { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "t1" }] } },
+      { type: "assistant", message: { role: "assistant", id: "m1", content: [{ type: "text", text: "t1" }] } },
+      { type: "stream_event", event: { type: "message_stop" } },
       { type: "result", subtype: "success", usage: {} },
-      { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "t2" }] } },
+      { type: "assistant", message: { role: "assistant", id: "m2", content: [{ type: "text", text: "t2" }] } },
+      { type: "stream_event", event: { type: "message_stop" } },
     ]);
     // [0]=assistant t1 (turn0) [1]=usage (turn0) [2]=turn/end (turn0) [3]=assistant t2 (turn1)
     expect(events[0]?.data["turn"]).toBe(0);
