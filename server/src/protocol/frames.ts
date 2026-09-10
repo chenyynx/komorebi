@@ -12,16 +12,19 @@ export interface OutboundFrame {
 
 /** Capabilities advertised in hello; must match the protocol set we implement. */
 export const CAPABILITIES: readonly string[] = [
+  // 2026-09-11 P0-1: advertise only what this build actually implements.
+  // Removed (STUB/empty per audit dsh-mobile-full-audit-2026-09-11.md):
+  //   commands / tasks / goals / file-downloads / queue-control.
+  // Client effects: "/" falls back to a local empty catalog (no error alert),
+  // the files sheet shows a clear "unsupported" alert instead of spinning,
+  // goal buttons are cleanly gated. images stays: the send path works; the
+  // queue-drop/history-loss bugs are server bugs to fix, not to mask.
+  // Add a capability back only when its orchestrator case is real.
   "split-channels",
   "images",
-  "commands",
-  "tasks",
-  "goals",
   "session-cancel",
-  "queue-control",
   "session-archive",
   "session-rename",
-  "file-downloads",
   "session-create",
 ];
 

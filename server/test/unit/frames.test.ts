@@ -49,16 +49,24 @@ describe("paired / hello (protocol §1)", () => {
     expect(frame["clients"]).toBe(1);
     const caps = frame["capabilities"] as string[];
     for (const cap of [
-      "split-channels", "images", "commands", "tasks", "goals",
-      "session-cancel", "queue-control", "session-archive", "session-rename",
-      "file-downloads", "session-create",
+      "split-channels", "images",
+      "session-cancel", "session-archive", "session-rename", "session-create",
     ]) {
       expect(caps).toContain(cap);
     }
+    // P0-1 (2026-09-11): never advertise a capability whose case is a stub —
+    // the client renders UI for advertised caps and every tap errors out.
+    for (const cap of ["commands", "tasks", "goals", "file-downloads", "queue-control"]) {
+      expect(caps).not.toContain(cap);
+    }
   });
 
-  it("CAPABILITIES constant covers the full protocol set (no amputation)", () => {
-    expect(CAPABILITIES).toHaveLength(11);
+  it("CAPABILITIES constant matches implemented cases exactly (P0-1)", () => {
+    expect(CAPABILITIES).toHaveLength(6);
+    expect(CAPABILITIES).toEqual([
+      "split-channels", "images",
+      "session-cancel", "session-archive", "session-rename", "session-create",
+    ]);
   });
 });
 
