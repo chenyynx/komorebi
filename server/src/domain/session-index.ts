@@ -25,6 +25,11 @@ import type { SessionRecord } from "./state.js";
 export interface SessionIndexFile {
   readonly version: 1;
   readonly sessions: readonly SessionRecord[];
+  /**
+   * Archived ids the registry has no state for (the phone's orphan sessions).
+   * Optional so older files still load; an unknown-shape read never fails.
+   */
+  readonly archivedOnly?: readonly string[];
 }
 
 /** Fields a record must carry to be trusted; everything else is optional. */
@@ -84,6 +89,12 @@ export class SessionIndexStore {
       this.registry.restore(record);
       restored++;
     }
+    const archivedOnly = (parsed as Partial<SessionIndexFile> | null)?.archivedOnly;
+    if (Array.isArray(archivedOnly)) {
+      this.registry.rememberArchivedOnly(
+        archivedOnly.filter((id): id is string => typeof id === "string" && id !== ""),
+      );
+    }
     this.rejected = dropped;
     // a successful load becomes the write baseline, so an unchanged boot
     // rewrites nothing
@@ -138,6 +149,10 @@ export class SessionIndexStore {
   }
 
   private envelope(): SessionIndexFile {
-    return { version: 1, sessions: this.registry.snapshot() };
+    return {
+      version: 1,
+      sessions: this.registry.snapshot(),
+      archivedOnly: this.registry.archivedUnknownIds(),
+    };
   }
 }

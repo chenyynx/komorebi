@@ -135,3 +135,30 @@ describe("write discipline", () => {
     box.cleanup();
   });
 });
+
+describe("orphan ids the phone still remembers", () => {
+  it("archiving an id with no session state survives a restart (no resurrection into 未分组)", () => {
+    const box = freshDir();
+    const first = new SessionRegistry();
+    first.create("real", "/home/ubuntu", Date.now());
+    // the app holds an id the gateway never knew (pre-F1 orphan) and archives it
+    const fullSet = first.archive("orphan-deadbeef");
+    expect(fullSet).toContain("orphan-deadbeef");
+    new SessionIndexStore(first, box.file).flush();
+
+    const second = new SessionRegistry();
+    second.restore({
+      sessionId: "real",
+      cwd: "/home/ubuntu",
+      createdAt: 1,
+      seq: 3,
+      updatedAt: 4,
+      preset: "workspace-write",
+    });
+    expect(second.archivedSet).toEqual([]); // fresh boot starts empty
+    new SessionIndexStore(second, box.file).load();
+    expect(second.archivedSet).toContain("orphan-deadbeef");
+    expect(second.get("orphan-deadbeef")).toBeUndefined(); // hidden, never fabricated
+    expect(second.list().map((s) => s.sessionId)).toEqual(["real"]);
+  });
+});

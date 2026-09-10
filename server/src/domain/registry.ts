@@ -106,6 +106,23 @@ export class SessionRegistry {
     return [...this.archivedIds];
   }
 
+  /**
+   * Archived ids with no session state behind them. These are the phone's
+   * orphans: ids minted before the index existed (pre-F1 restarts wiped them),
+   * which the app still lists — under "未分组" — and can never open.
+   * Archiving one must stick, or every restart resurrects the dead rows.
+   */
+  archivedUnknownIds(): readonly string[] {
+    return [...this.archivedIds].filter((id) => !this.sessions.has(id));
+  }
+
+  /** Re-arm those ids after a boot (no state created, just the hidden set). */
+  rememberArchivedOnly(ids: readonly string[]): void {
+    for (const id of ids) {
+      if (id !== "") this.archivedIds.add(id);
+    }
+  }
+
   /** Full-text search over titles and first user message (§5 search). */
   search(query: string): readonly SessionListItem[] {
     const needle = query.trim().toLowerCase();
