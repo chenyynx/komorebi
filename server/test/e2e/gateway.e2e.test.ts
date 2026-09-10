@@ -444,6 +444,11 @@ describe("graceful shutdown (F2) + restart gate (F5)", () => {
     const allEnds = client.log.filter((f) =>
       f["kind"] === "event" && (f as { event?: { type?: string } }).event?.type === "turn/end");
     expect(allEnds).toHaveLength(1); // no duplicate terminal frame
+
+    // a second SIGINT (pm2 sends more than one) must be idempotent: no extra
+    // terminal frame, nothing left flagged running
+    expect(stack.orch.shutdown()).toBe(0);
+    expect(stack.orch.preflightSnapshot().every((x) => !x.running)).toBe(true);
     expect(aborts).toBe(1);          // the SDK subprocess was released
     expect(stack.orch.preflightSnapshot().find((x) => x["sessionId"] === sessionId)?.["running"]).toBe(false);
 
