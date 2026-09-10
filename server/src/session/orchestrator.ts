@@ -39,6 +39,7 @@ import type { SessionState } from "../domain/state.js";
 import { EventBroadcaster } from "../stream/broadcaster.js";
 import { ClaudeRunner, type PermissionOutcome, type SdkQueryFn } from "../backend/claude-runner.js";
 import { pageHistory } from "../backend/history.js";
+import { schemeAEvent } from "../protocol/wire-events.js";
 import { TranscriptReader, transcriptPath } from "../backend/transcript.js";
 import type { Config, PermissionPreset } from "../config.js";
 
@@ -358,7 +359,7 @@ export class SessionOrchestrator {
     conn.ws.send(JSON.stringify({
       kind: "history",
       sessionId: frame.frame.sessionId,
-      events: page.events.map((e) => ({ type: e.type, seq: e.seq, time: e.time, data: e.data })),
+      events: page.events.map((e) => schemeAEvent(e)),
       bytes: page.bytes,
       ...(frame.frame.view !== undefined ? { view: frame.frame.view } : {}),
       hasMore: page.hasMore,

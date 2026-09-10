@@ -165,19 +165,22 @@ describe("full pipeline", () => {
     const sent = await client.next({ kind: "sent" });
     expect(sent.sessionId).toBe(sessionId);
 
-    await client.next({ kind: "event", "event.type": "user/message" });
+    // live frames are FLAT refined payloads: no `data` wrapper, field names match GatewayEvent
+    const liveUser = await client.next<{ event: Record<string, unknown> }>({ kind: "event", "event.type": "user/message" });
+    expect(liveUser.event["text"]).toBe("看看目录");
+    expect(liveUser.event["data"]).toBeUndefined();
     await client.next({ kind: "event", "event.type": "tool/call" });
     // canonical #1: the thinking+tool_use message (empty visible text, toolCalls present)
-    const canonical1 = await client.next<{ event: { data: { text: string; reasoning: string; toolCalls: { callId: string }[] } } }>({ kind: "event", "event.type": "assistant/message" });
-    expect(canonical1.event.data.text).toBe("");
-    expect(canonical1.event.data.reasoning).toBe("让我想想");
-    expect(canonical1.event.data.toolCalls[0]?.callId).toBe("call_e2e");
+    const canonical1 = await client.next<{ event: { text: string; reasoning: string; toolCalls: { id: string }[] } }>({ kind: "event", "event.type": "assistant/message" });
+    expect(canonical1.event.text).toBe("");
+    expect(canonical1.event.reasoning).toBe("让我想想");
+    expect(canonical1.event.toolCalls[0]?.id).toBe("call_e2e");
     await client.next({ kind: "event", "event.type": "tool/result" });
     // canonical #2: the final text answer
-    const canonical = await client.next<{ event: { data: { text: string } } }>({ kind: "event", "event.type": "assistant/message" });
-    expect(canonical.event.data.text).toBe("有两个文件：a.txt 和 b.txt");
-    const turnEnd = await client.next<{ event: { data: { reason: string } } }>({ kind: "event", "event.type": "turn/end" });
-    expect(turnEnd.event.data.reason).toBe("end_turn");
+    const canonical = await client.next<{ event: { text: string } }>({ kind: "event", "event.type": "assistant/message" });
+    expect(canonical.event.text).toBe("有两个文件：a.txt 和 b.txt");
+    const turnEnd = await client.next<{ event: { reason: string } }>({ kind: "event", "event.type": "turn/end" });
+    expect(turnEnd.event.reason).toBe("end_turn");
 
     expect(spawnLog.length).toBeGreaterThan(0);
     const last = spawnLog[spawnLog.length - 1];
@@ -185,11 +188,24 @@ describe("full pipeline", () => {
     expect(last?.includePartialMessages).toBe(true);
 
     client.ws.send(JSON.stringify({ type: "history", sessionId, view: "conversation" }));
-    const history = await client.next<{ events: { type: string }[]; hasMore: boolean; projections: { asOfSeq: number } }>({ kind: "history" });
+    const history = await client.next<{ events: { type: string; data?: Record<string, unknown> }[]; hasMore: boolean; projections: { asOfSeq: number } }>({ kind: "history" });
     expect(history.events.some((e) => e.type === "assistant/chunk")).toBe(false);
     expect(history.events.some((e) => e.type === "assistant/message")).toBe(true);
     expect(history.events.some((e) => e.type === "user/message")).toBe(true);
     expect(history.hasMore).toBe(false);
+    // scheme A: history events must carry the raw block shapes the client's
+    // RawSessionEvent.normalized() reads (data.content[], data.message.content[]).
+    const histUser = history.events.find((e) => e.type === "user/message");
+    const userContent = histUser?.data?.["content"] as { type: string; text?: string }[] | undefined;
+    expect(userContent?.[0]?.type).toBe("text");
+    expect(userContent?.[0]?.text).toBe("看看目录");
+    const histAssistants = history.events.filter((e) => e.type === "assistant/message");
+    const toolCallSeen = histAssistants.some((e) =>
+      (((e.data?.["message"] as { content?: { type: string }[] } | undefined)?.content) ?? []).some(
+        (b) => b.type === "tool-call",
+      ),
+    );
+    expect(toolCallSeen).toBe(true);
 
     client.ws.send(JSON.stringify({ type: "sessions" }));
     const sessions = await client.next<{ sessions: { sessionId: string }[] }>({ kind: "sessions" });

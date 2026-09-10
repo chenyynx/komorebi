@@ -7,6 +7,7 @@
 import type { AuthenticatedConnection } from "../ws/server.js";
 import type { OutboundFrame } from "../protocol/frames.js";
 import { approvalRequestedFrame, eventFrame } from "../protocol/frames.js";
+import { wireEvent } from "../protocol/wire-events.js";
 import type { SessionEvent } from "../domain/events.js";
 
 /** Pending approvals per connection for replay on (re)subscribe (protocol §3.2). */
@@ -86,10 +87,7 @@ export class EventBroadcaster {
    * Eligibility: connection tracked, either unfiltered (no subscribe) or subscribed to the session.
    */
   broadcastEvent(sessionId: string, event: SessionEvent, now: number): void {
-    const frame = eventFrame(sessionId, event.seq, event.time, {
-      type: event.type,
-      data: event.data,
-    });
+    const frame = eventFrame(sessionId, event.seq, event.time, wireEvent(event));
     for (const conn of this.queues.keys()) {
       if (!this.eligible(conn, sessionId)) continue;
       this.enqueue(conn, frame, now);

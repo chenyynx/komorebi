@@ -68,7 +68,7 @@ export function eventFrame(
   sessionId: string,
   seq: number,
   time: number,
-  event: { readonly type: string; readonly seq?: number; readonly time?: number; readonly data: unknown },
+  event: Record<string, unknown>,
 ): OutboundFrame {
   return { kind: "event", sessionId, seq, time, event };
 }
