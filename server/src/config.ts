@@ -14,6 +14,8 @@ export interface Config {
   readonly port: number;
   /** WebSocket path the mobile client connects to. */
   readonly wsPath: string;
+  /** Public wss endpoint advertised in pairing payloads. */
+  readonly publicUrl: string;
   /** Data directory for device store, sessions index, attachments. */
   readonly dataDir: string;
   /** Root directory exposed as workspace list (pp decision: open /home/ubuntu). */
@@ -64,6 +66,7 @@ export function loadConfig(overrides?: Partial<Config>): Config {
   const config: Config = {
     port: intEnv("MGW_PORT", 3090),
     wsPath: strEnv("MGW_WS_PATH", "/ws/mobile"),
+    publicUrl: strEnv("MGW_PUBLIC_URL", "wss://dsh.pipicore.cn/ws/mobile"),
     dataDir: strEnv("MGW_DATA_DIR", "/home/ubuntu/dsh-mobile/server/data"),
     workspaceRoot: strEnv("MGW_WORKSPACE_ROOT", "/home/ubuntu"),
     sessionCwdRoot: strEnv("MGW_SESSION_CWD_ROOT", "/home/ubuntu"),

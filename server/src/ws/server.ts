@@ -8,6 +8,7 @@
 import { IncomingMessage, Server as HttpServer, createServer } from "node:http";
 import { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
+import { encodePairingPayload } from "../auth/pairing.js";
 import { DeviceStore } from "../auth/device-store.js";
 import { extractAuthFromRequest, extractPairingFromRequest } from "../auth/pairing.js";
 import { Config } from "../config.js";
@@ -44,9 +45,7 @@ export class GatewayServer {
     private readonly devices: DeviceStore,
     private readonly dispatch: FrameDispatch,
   ) {
-    this.http = createServer((_req, res) => {
-      res.writeHead(404).end("not found");
-    });
+    this.http = createServer((req, res) => this.handleAdmin(req, res));
     this.wss = new WebSocketServer({
       server: this.http,
       path: config.wsPath,
@@ -56,6 +55,54 @@ export class GatewayServer {
   }
 
   /** Bind loopback; supports port 0 (OS-assigned) — resolves with the actual port. */
+  /**
+   * Management surface (protocol §15): pairing/devices/revoke over HTTP,
+   * loopback-only. The mobile client never touches these.
+   */
+  private handleAdmin(req: IncomingMessage, res: import("node:http").ServerResponse): void {
+    const remote = req.socket.remoteAddress ?? "";
+    const isLoopback = remote === "127.0.0.1" || remote === "::1" || remote === "::ffff:127.0.0.1";
+    const url = req.url ?? "";
+    if (!isLoopback) {
+      res.writeHead(403).end("forbidden");
+      return;
+    }
+    if (url === "/mgw/pair" && req.method === "POST") {
+      const { code, expiresAt } = this.devices.issuePairingCode();
+      const payload = encodePairingPayload({
+        version: 2,
+        publicUrl: this.config.publicUrl,
+        pairingCode: code,
+        expiresAt,
+      });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ pairingText: payload, expiresAt }));
+      return;
+    }
+    if (url === "/mgw/devices" && req.method === "GET") {
+      const devices = this.devices.listDevices().map((d) => ({ id: d.id, name: d.name, createdAt: d.createdAt }));
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ devices }));
+      return;
+    }
+    if (url === "/mgw/revoke" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => (body += String(chunk)));
+      req.on("end", () => {
+        try {
+          const { deviceId } = JSON.parse(body) as { deviceId?: string };
+          const ok = deviceId !== undefined ? this.devices.revoke(deviceId) : false;
+          res.writeHead(ok ? 200 : 404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ revoked: ok }));
+        } catch {
+          res.writeHead(400).end("bad json");
+        }
+      });
+      return;
+    }
+    res.writeHead(404).end("not found");
+  }
+
   listen(): Promise<number> {
     return new Promise((resolve, reject) => {
       this.http.once("error", reject);
