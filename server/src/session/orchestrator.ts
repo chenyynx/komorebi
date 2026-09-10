@@ -459,9 +459,24 @@ export class SessionOrchestrator {
     }));
   }
 
+  /**
+   * protocol §4: `session-cancel` → `{kind:"session-cancelled", accepted}`.
+   *
+   * `accepted` answers "is this session stopped now?", not "was there something
+   * to interrupt?". The client discards an unaccepted reply and keeps its
+   * stop-button spinner up (GatewayRuntime: `if (!correlation.accepted) return
+   * null`), which is what pp saw as 未被服务端接收 after my restart had already
+   * killed the turn: nothing was left to cancel, yet stopping was still the
+   * state the user asked for. Unknown sessions stay an explicit error.
+   */
   private handleCancel(conn: AuthenticatedConnection, sessionId: string): void {
+    if (this.registry.get(sessionId) === undefined) {
+      conn.ws.send(JSON.stringify(errorFrame(ERROR_CODES.SESSION_NOT_FOUND, sessionId, "session-cancel", sessionId)));
+      return;
+    }
     const runner = this.runners.get(sessionId);
-    const accepted = runner?.abort() ?? false;
+    runner?.abort();
+    const accepted = true;
     // pending approvals resolve as denied (turn is over)
     for (const [rpcId, pending] of this.pendingApprovals) {
       if (pending.sessionId !== sessionId) continue;

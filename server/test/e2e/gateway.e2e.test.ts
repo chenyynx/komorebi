@@ -496,3 +496,55 @@ describe("adopt an orphaned phone session id (F4 rescue)", () => {
     client.ws.close();
   });
 });
+
+describe("session-cancel semantics (§4)", () => {
+  it("accepts a stop even when nothing is running (the app must not stay stuck)", async () => {
+    const client = await pairedOn(port);
+    client.ws.send(JSON.stringify({ type: "session-create", requestId: "cx0", cwd: "/home/ubuntu" }));
+    const created = await client.next<{ sessionId: string }>({ kind: "session-created" });
+    client.ws.send(JSON.stringify({ type: "session-cancel", sessionId: created.sessionId }));
+    const cancelled = await client.next<{ kind: string; accepted: boolean }>({ kind: "session-cancelled" });
+    // accepted answers "is it stopped now?", not "was there something to interrupt?"
+    expect(cancelled.accepted).toBe(true);
+    client.ws.close();
+  });
+
+  it("an unknown session is an explicit error, never a silent accept", async () => {
+    const client = await pairedOn(port);
+    client.ws.send(JSON.stringify({ type: "session-cancel", sessionId: "no-such-session" }));
+    const err = await client.next<{ kind: string; code: string }>({ kind: "error" });
+    expect(err.code).toBe("session-not-found");
+    client.ws.close();
+  });
+
+  it("stopping a live turn ends it as cancelled, not as an error string", async () => {
+    const stack = await openStack((options) => ({
+      async *[Symbol.asyncIterator]() {
+        yield { type: "system", subtype: "init", session_id: "cc-cancel" } as SdkMessageLike;
+        await new Promise<void>((resolve) => {
+          options.abortController.signal.addEventListener("abort", () => resolve());
+        });
+        // the real SDK stream errors out on abort; mirror that so the pump's
+        // terminal branch runs and we can assert the reason it emits
+        throw new Error("aborted by user");
+      },
+      abort() {
+        options.abortController.abort();
+      },
+    }));
+    const client = await pairedOn(stack.actualPort);
+    client.ws.send(JSON.stringify({ type: "session-create", requestId: "cx1", cwd: "/home/ubuntu" }));
+    const created = await client.next<{ sessionId: string }>({ kind: "session-created" });
+    client.ws.send(JSON.stringify({ type: "message", sessionId: created.sessionId, text: "长任务" }));
+    await client.next({ kind: "event", "event.type": "turn/start" });
+    client.ws.send(JSON.stringify({ type: "session-cancel", sessionId: created.sessionId }));
+    const cancelled = await client.next<{ accepted: boolean }>({ kind: "session-cancelled" });
+    expect(cancelled.accepted).toBe(true);
+    const end = await client.next<{ event: { type: string; reason: string } }>({ kind: "event", "event.type": "turn/end" });
+    expect(end.event.reason).toBe("cancelled");
+    const ends = client.log.filter((f) => (f as { event?: { type?: string } }).event?.type === "turn/end");
+    expect(ends).toHaveLength(1); // a stopped turn still ends exactly once
+    await stack.stackServer.close();
+    client.ws.close();
+  });
+});

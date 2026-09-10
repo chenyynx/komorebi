@@ -74,6 +74,8 @@ export class ClaudeRunner {
   private ttftMs: number | undefined;
   /** Set while shutting down: a turn may only ever end once. */
   private terminated = false;
+  /** Reason for the terminal frame when the user stops the turn themselves. */
+  private cancelled = false;
 
   constructor(
     private readonly state: SessionState,
@@ -117,6 +119,7 @@ export class ClaudeRunner {
     const translator = new EventTranslator();
     this.translator = translator;
     this.terminated = false;
+    this.cancelled = false;
     this.coalescer = new DeltaCoalescer((chunks) => this.flushChunks(chunks));
     this.state.setRunning(true);
 
@@ -174,7 +177,7 @@ export class ClaudeRunner {
         this.emitEvent("turn/end", {
           turn: translator.currentTurn,
           step: translator.currentStep,
-          reason: `error: ${(error as Error).message}`,
+          reason: this.cancelled ? "cancelled" : `error: ${(error as Error).message}`,
         });
       }
     } finally {
@@ -229,6 +232,9 @@ export class ClaudeRunner {
   /** session-cancel (protocol §4): stop the current turn. */
   abort(): boolean {
     if (this.handle === undefined) return false;
+    // A user stop is not an error: the pump's terminal frame must read
+    // `cancelled`, not "error: <SDK abort message>".
+    this.cancelled = true;
     this.handle.abort();
     return true;
   }
