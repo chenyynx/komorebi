@@ -150,8 +150,8 @@ export class SessionOrchestrator {
       this.registry.restore({
         sessionId: input.sessionId,
         cwd,
-        createdAt: now,
-        updatedAt: now,
+        createdAt: Date.now(), // 与 create 同单位（毫秒）
+        updatedAt: now, // 秒，与事件时间同单位
         seq,
         preset: this.settings.defaultPermission,
         ccSessionId: input.ccSessionId,

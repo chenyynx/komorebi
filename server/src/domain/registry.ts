@@ -50,16 +50,20 @@ export class SessionRegistry {
   restore(record: SessionRecord): SessionState {
     const existing = this.sessions.get(record.sessionId);
     if (existing !== undefined) return existing;
-    const state = new SessionState(record.sessionId, record.cwd, record.createdAt);
+    // 索引里的 createdAt 历史上混过两种单位（毫秒 / 秒），updatedAt 也出现过 0（空白会话）。
+    // 载入时统一：createdAt → 毫秒，updatedAt → 有效秒（缺失/0 时由 createdAt 派生）。
+    const createdMs = record.createdAt > 1e12 ? record.createdAt : record.createdAt * 1000;
+    const updatedSeconds = record.updatedAt > 0 ? record.updatedAt : Math.floor(createdMs / 1000);
+    const state = new SessionState(record.sessionId, record.cwd, createdMs);
     state.hydrate({
       ...(record.title !== undefined ? { title: record.title } : {}),
-      updatedAt: record.updatedAt,
+      updatedAt: updatedSeconds,
       ...(record.ccSessionId !== undefined ? { ccSessionId: record.ccSessionId } : {}),
       archived: record.archived === true,
       ...(record.nextModel !== undefined ? { nextModel: record.nextModel } : {}),
       preset: record.preset,
       seq: record.seq,
-      createdAt: record.createdAt,
+      createdAt: createdMs,
     });
     if (record.archived === true) this.archivedIds.add(record.sessionId);
     this.sessions.set(record.sessionId, state);

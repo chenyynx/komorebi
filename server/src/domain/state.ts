@@ -50,6 +50,9 @@ export class SessionState {
 
   constructor(readonly sessionId: string, readonly cwd: string, createdAt: number) {
     this.createdAt = createdAt;
+    // updatedAt 与事件时间同单位（秒）。这里必须初始化：否则"建了但还没说话"的空白会话
+    // updatedAt=0 → 客户端按时间排序把它沉到 1970（表现为"会话藏在分组里/找不到"）。
+    this.updatedAt = createdAt > 1e12 ? Math.floor(createdAt / 1000) : createdAt;
   }
 
   get metadata(): SessionMetadata {

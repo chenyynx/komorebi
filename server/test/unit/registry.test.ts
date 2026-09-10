@@ -97,3 +97,31 @@ describe("search (§5)", () => {
     expect(registry.search("")).toHaveLength(2);
   });
 });
+
+describe("timestamps (§5 sessions.updatedAt)", () => {
+  it("a freshly created blank session already has a sane updatedAt (never 1970)", () => {
+    const registry = new SessionRegistry();
+    const nowMs = Date.now();
+    registry.create("fresh", "/w", nowMs);
+    const item = registry.list()[0];
+    // 客户端按 updatedAt 排序：0 会把会话沉到 1970（线上表现 = "会话藏进分组/找不到"）
+    expect(item.updatedAt).toBeGreaterThan(1_600_000_000);
+    expect(item.updatedAt).toBe(Math.floor(nowMs / 1000));
+  });
+
+  it("restore heals a stored updatedAt=0 and normalizes a seconds-based createdAt to ms", () => {
+    const registry = new SessionRegistry();
+    const seconds = Math.floor(Date.now() / 1000);
+    registry.restore({
+      sessionId: "old",
+      cwd: "/w",
+      createdAt: seconds, // 历史数据：adopt 路径曾写秒
+      seq: 0,
+      updatedAt: 0, // 历史数据：空白会话
+      preset: "workspace-write",
+    });
+    const item = registry.list()[0];
+    expect(item.updatedAt).toBe(seconds);
+    expect(registry.get("old")?.record().createdAt).toBe(seconds * 1000);
+  });
+});
