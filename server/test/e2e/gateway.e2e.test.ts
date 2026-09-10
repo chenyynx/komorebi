@@ -127,7 +127,9 @@ function connectTo(targetPort: number, pairingCode: string, deviceId: string): C
   };
 }
 
-async function openStack(query: (options: SdkSpawnOptions) => SdkQueryHandle): Promise<{ actualPort: number; stackServer: GatewayServer }> {
+async function openStack(query: (options: SdkSpawnOptions) => SdkQueryHandle): Promise<{
+  actualPort: number; stackServer: GatewayServer; orch: SessionOrchestrator;
+}> {
   const config = loadConfig({ port: 0, dataDir });
   const registry = new SessionRegistry();
   const broadcaster = new EventBroadcaster();
@@ -137,8 +139,11 @@ async function openStack(query: (options: SdkSpawnOptions) => SdkQueryHandle): P
     onOpen: (conn) => orch.onOpen(conn),
     onClose: (conn) => orch.onClose(conn),
   });
+  // same wiring the composition root does in src/index.ts — without this the
+  // admin plane silently reports an empty list (caught by the F5 case below)
+  stackServer.preflightProvider = () => orch.preflightSnapshot();
   const actualPort = await stackServer.listen();
-  return { actualPort, stackServer };
+  return { actualPort, stackServer, orch };
 }
 
 /** Pair a client against any stack port, waiting through paired+hello. */
@@ -368,6 +373,86 @@ describe("full pipeline", () => {
     client.ws.send(JSON.stringify({ type: "sessions" }));
     const sessions = await client.next<{ sessions: { sessionId: string }[] }>({ kind: "sessions" });
     expect(sessions.sessions.some((s) => s.sessionId === sessionId)).toBe(false); // hidden after archive
+    client.ws.close();
+  });
+});
+
+
+/* ------------------------------------------------------------------ *
+ * F2 (graceful shutdown) + F5 (restart gate) — real WS, hanging turn.
+ * Incident 2026-09-10: a restart left the phone waiting ~5 minutes for a
+ * turn/end that never came. Shutdown must close every in-flight turn once.
+ * ------------------------------------------------------------------ */
+describe("graceful shutdown (F2) + restart gate (F5)", () => {
+  it("ccSessionId is bound from system init and every later turn resumes it", async () => {
+    const before = spawnLog.length;
+    const client = await pairedOn(port);
+    client.ws.send(JSON.stringify({ type: "session-create", requestId: "rs1", cwd: "/home/ubuntu" }));
+    const created = await client.next<{ sessionId: string }>({ kind: "session-created" });
+    const sessionId = created.sessionId;
+
+    client.ws.send(JSON.stringify({ type: "message", sessionId, text: "第一回合" }));
+    await client.next<{ kind: "event"; "event.type": string }>({ kind: "event", "event.type": "turn/end" });
+    client.ws.send(JSON.stringify({ type: "message", sessionId, text: "第二回合" }));
+    await client.next<{ kind: "event"; "event.type": string }>({ kind: "event", "event.type": "turn/end" });
+    client.ws.close();
+
+    const spawns = spawnLog.slice(before);
+    expect(spawns).toHaveLength(2);
+    // turn 1 has nothing to resume; turn 2 MUST carry the id announced by init
+    expect(spawns[0]?.resume).toBeUndefined();
+    expect(spawns[1]?.resume).toBe("cc-e2e-1");
+  });
+
+  it("an in-flight turn gets exactly one turn/end{shutdown}, and the gate sees it running first", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let aborts = 0;
+    // a turn that starts and never finishes on its own
+    const hangingQuery = (options: SdkSpawnOptions): SdkQueryHandle => ({
+      async *[Symbol.asyncIterator]() {
+        yield { type: "system", subtype: "init", session_id: "cc-hang" } as SdkMessageLike;
+        await gate;
+      },
+      abort() {
+        aborts++;
+        options.abortController.abort();
+        release();
+      },
+    });
+    const stack = await openStack(hangingQuery);
+    const client = await pairedOn(stack.actualPort);
+    client.ws.send(JSON.stringify({ type: "session-create", requestId: "hg1", cwd: "/home/ubuntu" }));
+    const created = await client.next<{ sessionId: string }>({ kind: "session-created" });
+    const sessionId = created.sessionId;
+
+    client.ws.send(JSON.stringify({ type: "message", sessionId, text: "永远不会回头的任务" }));
+    const started = await client.next<{ event: { type: string } }>({ kind: "event", "event.type": "turn/start" });
+    expect(started.event.type).toBe("turn/start");
+
+    // F5: the gate's data source must report this session as live
+    const gateView = await (await fetch(`http://127.0.0.1:${stack.actualPort}/mgw/sessions`)).json() as
+      { sessions: { sessionId: string; running: boolean }[] };
+    expect(gateView.sessions.find((x) => x.sessionId === sessionId)?.running).toBe(true);
+
+    // F2: shutdown lands one terminal frame, and only one
+    const closed = stack.orch.shutdown();
+    expect(closed).toBe(1);
+    const end = await client.next<{ event: { type: string; reason: string } }>({ kind: "event", "event.type": "turn/end" });
+    expect(end.event.reason).toBe("shutdown");
+    await new Promise((r) => setTimeout(r, 250)); // let the pump unwind
+    const allEnds = client.log.filter((f) =>
+      f["kind"] === "event" && (f as { event?: { type?: string } }).event?.type === "turn/end");
+    expect(allEnds).toHaveLength(1); // no duplicate terminal frame
+    expect(aborts).toBe(1);          // the SDK subprocess was released
+    expect(stack.orch.preflightSnapshot().find((x) => x["sessionId"] === sessionId)?.["running"]).toBe(false);
+
+    // a message arriving after shutdown is refused, not silently minted into a doomed turn
+    client.ws.send(JSON.stringify({ type: "message", sessionId, text: "晚到的消息" }));
+    const err = await client.next<{ kind: string; code: string }>({ kind: "error" });
+    expect(err.code).toBe("internal");
+
+    await stack.stackServer.close();
     client.ws.close();
   });
 });

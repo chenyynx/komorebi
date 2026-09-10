@@ -1,10 +1,11 @@
 /**
  * Session registry: sessionId → SessionState map, list ordering, archive set.
- * Owns no I/O — persistence of the index lives in the store layer (later stage).
+ * Owns no I/O — persistence lives in domain/session-index.ts, which reads and
+ * writes this module's snapshot()/restore() surface.
  * @module domain/registry
  */
 
-import { SessionState } from "./state.js";
+import { SessionState, type SessionRecord } from "./state.js";
 
 export interface SessionListItem {
   readonly sessionId: string;
@@ -30,6 +31,39 @@ export class SessionRegistry {
 
   get(sessionId: string): SessionState | undefined {
     return this.sessions.get(sessionId);
+  }
+
+  /** Every live session, insertion order (shutdown sweep needs the whole set). */
+  all(): readonly SessionState[] {
+    return [...this.sessions.values()];
+  }
+
+  /** Persistable snapshot of the index — the store layer's only input. */
+  snapshot(): readonly SessionRecord[] {
+    return [...this.sessions.values()].map((state) => state.record());
+  }
+
+  /**
+   * Rebuild one session from disk. Idempotent by sessionId; `running` is never
+   * restored (SessionState.hydrate forces it false).
+   */
+  restore(record: SessionRecord): SessionState {
+    const existing = this.sessions.get(record.sessionId);
+    if (existing !== undefined) return existing;
+    const state = new SessionState(record.sessionId, record.cwd, record.createdAt);
+    state.hydrate({
+      ...(record.title !== undefined ? { title: record.title } : {}),
+      updatedAt: record.updatedAt,
+      ...(record.ccSessionId !== undefined ? { ccSessionId: record.ccSessionId } : {}),
+      archived: record.archived === true,
+      ...(record.nextModel !== undefined ? { nextModel: record.nextModel } : {}),
+      preset: record.preset,
+      seq: record.seq,
+      createdAt: record.createdAt,
+    });
+    if (record.archived === true) this.archivedIds.add(record.sessionId);
+    this.sessions.set(record.sessionId, state);
+    return state;
   }
 
   /** Protocol §5: archived sessions hidden, list sorted by updatedAt desc. */

@@ -20,6 +20,21 @@ export interface SessionMetadata {
   permission: PermissionState;
 }
 
+/** What the index store writes to disk for one session. */
+export interface SessionRecord {
+  readonly sessionId: string;
+  readonly cwd: string;
+  readonly createdAt: number;
+  /** Next seq to allocate (not a high-water mark of buffered events). */
+  readonly seq: number;
+  readonly updatedAt: number;
+  readonly preset: PermissionState["preset"];
+  readonly title?: string;
+  readonly ccSessionId?: string;
+  readonly nextModel?: string;
+  readonly archived?: boolean;
+}
+
 export interface PermissionState {
   readonly preset: "read-only" | "workspace-write" | "danger-full-access";
 }
@@ -31,7 +46,7 @@ export class SessionState {
   private seqCounter = 0;
   private buffer: SessionEvent[] = [];
   private running = false;
-  readonly createdAt: number;
+  createdAt: number;
 
   constructor(readonly sessionId: string, readonly cwd: string, createdAt: number) {
     this.createdAt = createdAt;
@@ -78,6 +93,56 @@ export class SessionState {
   /** Allocate the next strictly monotonic seq (starts at 0). */
   allocateSeq(): number {
     return this.seqCounter++;
+  }
+
+  /** Next seq to be allocated — persisted so the client's seq space survives a restart. */
+  get nextSeq(): number {
+    return this.seqCounter;
+  }
+
+  /**
+   * Restore persisted fields. The event buffer is deliberately NOT rebuilt here:
+   * history comes from Claude Code's own transcript on disk (plan D2). What IS
+   * restored is the seq counter — the client tracks `lastSequence`, so live
+   * frames reusing a seq it already saw would be discarded after a restart.
+   * `running` is never resurrected: a persisted running flag is a corpse.
+   */
+  hydrate(input: {
+    readonly title?: string;
+    readonly updatedAt?: number;
+    readonly ccSessionId?: string;
+    readonly archived?: boolean;
+    readonly nextModel?: string;
+    readonly preset?: SessionMetadata["permission"]["preset"];
+    readonly seq?: number;
+    readonly createdAt?: number;
+  }): void {
+    if (input.title !== undefined) this.title = input.title;
+    if (input.updatedAt !== undefined) this.updatedAt = input.updatedAt;
+    if (input.ccSessionId !== undefined) this.ccSessionId = input.ccSessionId;
+    if (input.nextModel !== undefined) this.nextModel = input.nextModel;
+    if (input.preset !== undefined) this.preset = input.preset;
+    if (input.archived === true) this.archived = true;
+    if (input.createdAt !== undefined) this.createdAt = input.createdAt;
+    if (input.seq !== undefined && input.seq > this.seqCounter) this.seqCounter = input.seq;
+    this.running = false;
+  }
+
+  /** Persistable projection of this session (used by the index store). */
+  record(): SessionRecord {
+    const meta = this.metadata;
+    return {
+      sessionId: this.sessionId,
+      cwd: this.cwd,
+      createdAt: this.createdAt,
+      seq: this.seqCounter,
+      ...(meta.title !== undefined ? { title: meta.title } : {}),
+      ...(meta.ccSessionId !== undefined ? { ccSessionId: meta.ccSessionId } : {}),
+      ...(meta.nextModel !== undefined ? { nextModel: meta.nextModel } : {}),
+      ...(meta.archived ? { archived: true } : {}),
+      preset: meta.permission.preset,
+      updatedAt: meta.updatedAt,
+    };
   }
 
   /** Append an already-seq'd event; seq must equal the next allocation exactly. */

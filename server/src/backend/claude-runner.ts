@@ -72,6 +72,8 @@ export class ClaudeRunner {
   private coalescer: DeltaCoalescer | undefined;
   private aggregatedUsage: UsageSnapshot = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
   private ttftMs: number | undefined;
+  /** Set while shutting down: a turn may only ever end once. */
+  private terminated = false;
 
   constructor(
     private readonly state: SessionState,
@@ -114,6 +116,7 @@ export class ClaudeRunner {
     const abortController = new AbortController();
     const translator = new EventTranslator();
     this.translator = translator;
+    this.terminated = false;
     this.coalescer = new DeltaCoalescer((chunks) => this.flushChunks(chunks));
     this.state.setRunning(true);
 
@@ -146,18 +149,34 @@ export class ClaudeRunner {
   private async pump(handle: SdkQueryHandle, translator: EventTranslator, startedAt: number): Promise<void> {
     try {
       for await (const message of handle) {
+        // Bind the Claude Code session the moment the SDK announces it.
+        // Before this there was NO call site for attachCcSession at all, so
+        // ccSessionId stayed undefined forever and two features were silently
+        // dead in production: (a) resume — every turn of a phone session got a
+        // blank CC brain, losing multi-turn context; (b) the transcript history
+        // fallback after a restart (its guard requires ccSessionId).
+        if (
+          message.type === "system" && message.subtype === "init"
+          && typeof message.session_id === "string" && message.session_id !== ""
+        ) {
+          this.state.attachCcSession(message.session_id);
+        }
         if (this.ttftMs === undefined && (message.type === "stream_event" || message.type === "assistant")) {
           this.ttftMs = this.deps.now() - startedAt;
         }
         this.sinkDrafts(translator.translate(message));
       }
     } catch (error) {
-      // terminal error frame; transcript of a half turn stays in the buffer
-      this.emitEvent("turn/end", {
-        turn: translator.currentTurn,
-        step: translator.currentStep,
-        reason: `error: ${(error as Error).message}`,
-      });
+      // terminal error frame; transcript of a half turn stays in the buffer.
+      // Disarmed by terminateForShutdown() so a shutdown turn/end is not
+      // followed by a second (conflicting) terminal frame.
+      if (!this.terminated) {
+        this.emitEvent("turn/end", {
+          turn: translator.currentTurn,
+          step: translator.currentStep,
+          reason: `error: ${(error as Error).message}`,
+        });
+      }
     } finally {
       this.coalescer?.flushAll();
       this.state.setRunning(false);
@@ -212,6 +231,31 @@ export class ClaudeRunner {
     if (this.handle === undefined) return false;
     this.handle.abort();
     return true;
+  }
+
+  /**
+   * F2 shutdown path: land ONE terminal frame for the in-flight turn so the
+   * phone stops waiting on a reply that will never come, then release the
+   * handle. Without this the client sits on a live spinner forever after a
+   * restart (incident 2026-09-10: pp's session hung ~5 minutes).
+   */
+  terminateForShutdown(): void {
+    const handle = this.handle;
+    if (handle === undefined) return;
+    this.terminated = true;
+    this.coalescer?.flushAll();
+    this.emitEvent("turn/end", {
+      turn: this.translator?.currentTurn ?? 0,
+      step: this.translator?.currentStep ?? 0,
+      reason: "shutdown",
+    });
+    // detach first: isRunning is derived from the handle, and the pump's
+    // finally must not re-emit anything once we have terminated the turn
+    this.handle = undefined;
+    this.state.setRunning(false);
+    this.coalescer = undefined;
+    this.translator = undefined;
+    handle.abort();
   }
 
   private emitEvent(type: SessionEventType, data: Record<string, unknown>): SessionEvent {

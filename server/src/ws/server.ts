@@ -39,6 +39,11 @@ export class GatewayServer {
   private readonly wss: WebSocketServer;
   private readonly http: HttpServer;
   private readonly connections = new Set<AuthenticatedConnection>();
+  /**
+   * Set by the composition root so the loopback admin plane can report live
+   * sessions for the restart gate (F5). Optional: absent → empty list.
+   */
+  preflightProvider: (() => readonly Record<string, unknown>[]) | undefined;
 
   constructor(
     private readonly config: Config,
@@ -77,6 +82,13 @@ export class GatewayServer {
       });
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ pairingText: payload, expiresAt }));
+      return;
+    }
+    if (url === "/mgw/sessions" && req.method === "GET") {
+      // restart gate (F5): read-only, loopback-only, never touches the phone
+      const sessions = this.preflightProvider?.() ?? [];
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ sessions }));
       return;
     }
     if (url === "/mgw/devices" && req.method === "GET") {

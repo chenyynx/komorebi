@@ -68,6 +68,8 @@ export class SessionOrchestrator {
   private settings: { defaultModel?: { provider: string; model: string }; defaultPermission: PermissionPreset };
   private settingsPath: string;
   private transcript: TranscriptReader;
+  /** Set by shutdown(): no new turns, no queue drains, queues dropped. */
+  private shuttingDown = false;
 
   constructor(
     private readonly config: Config,
@@ -89,6 +91,45 @@ export class SessionOrchestrator {
   private queryFn: SdkQueryFn;
 
   // ---------------------------------------------------------------- lifecycle
+
+  /**
+   * F2: graceful shutdown. Every in-flight turn gets exactly one terminal
+   * frame; queued messages are dropped rather than drained into a process that
+   * is going away; pending approvals resolve as denied. Returns how many turns
+   * were closed (the restart gate logs this so a silent kill is visible).
+   */
+  shutdown(): number {
+    this.shuttingDown = true;
+    let closed = 0;
+    for (const runner of this.runners.values()) {
+      if (runner.isRunning) {
+        runner.terminateForShutdown();
+        closed++;
+      }
+    }
+    this.runners.clear();
+    for (const state of this.registry.all()) {
+      if (state.isRunning) state.setRunning(false);
+    }
+    this.queues.clear();
+    for (const [rpcId, pending] of [...this.pendingApprovals]) {
+      clearTimeout(pending.timer);
+      pending.resolve({ behavior: "deny", message: "gateway shutting down" });
+      this.pendingApprovals.delete(rpcId);
+    }
+    return closed;
+  }
+
+  /** Read-only view for the restart gate (F5): what is live on this process. */
+  preflightSnapshot(): readonly Record<string, unknown>[] {
+    return this.registry.all().map((state) => ({
+      sessionId: state.sessionId,
+      running: state.isRunning,
+      updatedAt: state.metadata.updatedAt,
+      cwd: state.metadata.cwd,
+      queued: (this.queues.get(state.sessionId) ?? []).length,
+    }));
+  }
 
   onOpen(conn: AuthenticatedConnection): void {
     this.broadcaster.track(conn);
@@ -255,6 +296,10 @@ export class SessionOrchestrator {
       sessionId = randomUUID();
       state = this.registry.create(sessionId, resolvedCwd, Date.now());
     }
+    if (this.shuttingDown) {
+      conn.ws.send(JSON.stringify(errorFrame(ERROR_CODES.INTERNAL, "gateway is shutting down", "message", f.sessionId ?? "")));
+      return;
+    }
     if (sessionId === undefined || state === undefined) return; // unreachable
 
     if (state.isRunning) {
@@ -309,6 +354,7 @@ export class SessionOrchestrator {
 
   /** Drain one queued message after a turn ends. */
   drainQueue(sessionId: string): void {
+    if (this.shuttingDown) return; // never start a turn we cannot finish
     const queue = this.queues.get(sessionId);
     if (queue === undefined || queue.length === 0) return;
     const state = this.registry.get(sessionId);

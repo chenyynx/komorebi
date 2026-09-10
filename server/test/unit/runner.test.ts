@@ -78,6 +78,30 @@ describe("spawn options", () => {
   });
 });
 
+describe("CC session binding (resume prerequisite)", () => {
+  it("system init's session_id lands on the state as ccSessionId", async () => {
+    const script: SdkMessageLike[] = [
+      { type: "system", subtype: "init", session_id: "cc-bound-77" },
+      { type: "result", subtype: "success", usage: {} },
+    ];
+    const { runner, state } = makeRunner(script);
+    runner.start({ text: "hi", preset: "workspace-write", canUseTool: async () => ({ behavior: "allow" }) });
+    await vi.waitFor(() => expect(runner.isRunning).toBe(false));
+    expect(state.metadata.ccSessionId).toBe("cc-bound-77");
+  });
+
+  it("an init without session_id leaves the mapping unset (never a stale value)", async () => {
+    const script: SdkMessageLike[] = [
+      { type: "system", subtype: "init" },
+      { type: "result", subtype: "success", usage: {} },
+    ];
+    const { runner, state } = makeRunner(script);
+    runner.start({ text: "hi", preset: "workspace-write", canUseTool: async () => ({ behavior: "allow" }) });
+    await vi.waitFor(() => expect(runner.isRunning).toBe(false));
+    expect(state.metadata.ccSessionId).toBeUndefined();
+  });
+});
+
 describe("full pipeline (fake SDK scripted turn)", () => {
   it("deltas coalesce; canonical assistant/message lands; tool call/result pair; usage aggregates; running flag cycles", async () => {
     const script: SdkMessageLike[] = [
