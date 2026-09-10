@@ -90,11 +90,24 @@ describe("search (§5)", () => {
     expect(hits.map((s) => s.sessionId)).toEqual(["b"]);
   });
 
-  it("empty query returns full list", () => {
+  it("empty query returns no items (2026-09-11: client filters locally, a full list would be meaningless)", () => {
     const registry = new SessionRegistry();
     registry.create("a", "/w", 1);
     registry.create("b", "/w", 2);
-    expect(registry.search("")).toHaveLength(2);
+    expect(registry.search("")).toEqual([]);
+  });
+
+  it("search entries carry snippet in the client's GatewaySearchItem shape", () => {
+    const registry = new SessionRegistry();
+    const b = registry.create("b", "/w", 1);
+    b.emit("user/message", 10, { text: "帮我查一下 deepseek" });
+    const a = registry.create("a", "/w", 2);
+    a.emit("user/message", 11, { text: "今天 deepseek 发布了新东西" });
+    registry.create("c", "/w", 3); // no match
+    const hits = registry.search("deepseek");
+    expect(hits.every((h) => typeof h.snippet === "string" && h.snippet.length > 0)).toBe(true);
+    expect(hits.some((h) => h.snippet.includes("deepseek"))).toBe(true);
+    expect(hits.map((h) => h.sessionId).sort()).toEqual(["a", "b"]);
   });
 });
 

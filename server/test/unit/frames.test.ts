@@ -49,22 +49,24 @@ describe("paired / hello (protocol §1)", () => {
     expect(frame["clients"]).toBe(1);
     const caps = frame["capabilities"] as string[];
     for (const cap of [
-      "split-channels", "images",
+      "split-channels", "images", "tasks",
       "session-cancel", "session-archive", "session-rename", "session-create",
     ]) {
       expect(caps).toContain(cap);
     }
     // P0-1 (2026-09-11): never advertise a capability whose case is a stub —
     // the client renders UI for advertised caps and every tap errors out.
-    for (const cap of ["commands", "tasks", "goals", "file-downloads", "queue-control"]) {
+    // `tasks` re-added 2026-09-11: the orchestrator case now returns the real
+    // TodoWrite projection (see domain/todos.ts).
+    for (const cap of ["commands", "goals", "file-downloads", "queue-control"]) {
       expect(caps).not.toContain(cap);
     }
   });
 
   it("CAPABILITIES constant matches implemented cases exactly (P0-1)", () => {
-    expect(CAPABILITIES).toHaveLength(6);
+    expect(CAPABILITIES).toHaveLength(7);
     expect(CAPABILITIES).toEqual([
-      "split-channels", "images",
+      "split-channels", "images", "tasks",
       "session-cancel", "session-archive", "session-rename", "session-create",
     ]);
   });

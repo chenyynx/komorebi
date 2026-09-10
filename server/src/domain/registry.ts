@@ -16,6 +16,12 @@ export interface SessionListItem {
   readonly cwd: string;
 }
 
+/** Client contract: GatewaySearchItem {sessionId, snippet} (GatewayDtos.kt:352); snippet is required or the whole entry is dropped on decode. */
+export interface SessionSearchItem {
+  readonly sessionId: string;
+  readonly snippet: string;
+}
+
 export class SessionRegistry {
   private sessions = new Map<string, SessionState>();
   private archivedIds = new Set<string>();
@@ -123,28 +129,29 @@ export class SessionRegistry {
     }
   }
 
-  /** Full-text search over titles and first user message (§5 search). */
-  search(query: string): readonly SessionListItem[] {
+  /** Full-text search over titles and first user message (§5 search).
+   * Returns {sessionId, snippet} entries — the client's GatewaySearchItem
+   * shape. `sessions`-keyed entries without snippet decode to nothing on the
+   * phone ("0 results" bug, audit 2026-09-11 §二-2). */
+  search(query: string): readonly SessionSearchItem[] {
     const needle = query.trim().toLowerCase();
-    if (needle === "") return this.list();
-    const results: SessionListItem[] = [];
+    const trim = (text: string): string => text.trim().slice(0, 80);
+    const results: SessionSearchItem[] = [];
+    if (needle === "") return results; // empty query -> no items, client keeps local filter
     for (const state of this.sessions.values()) {
       const meta = state.metadata;
       if (meta.archived || this.archivedIds.has(meta.sessionId)) continue;
-      const titleHit = meta.title !== undefined && meta.title.toLowerCase().includes(needle);
-      const firstUserHit = this.firstUserText(state).toLowerCase().includes(needle);
-      if (titleHit || firstUserHit) {
-        results.push({
-          sessionId: meta.sessionId,
-          ...(meta.title !== undefined ? { title: meta.title } : {}),
-          updatedAt: meta.updatedAt,
-          running: state.isRunning,
-          blank: state.isBlank,
-          cwd: meta.cwd,
-        });
+      const firstUserText = this.firstUserText(state);
+      let snippet: string | undefined = undefined;
+      if (meta.title !== undefined && meta.title.toLowerCase().includes(needle)) {
+        snippet = meta.title;
+      } else if (firstUserText.toLowerCase().includes(needle)) {
+        snippet = firstUserText;
+      }
+      if (snippet !== undefined) {
+        results.push({ sessionId: meta.sessionId, snippet: trim(snippet) });
       }
     }
-    results.sort((a, b) => b.updatedAt - a.updatedAt);
     return results;
   }
 

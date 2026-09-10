@@ -25,6 +25,7 @@ import {
 const OFFICIAL = {
   hello: '{"kind":"hello","protocol":3,"capabilities":["images"],"authenticated":true,"clients":2}',
   sessions: '{"kind":"sessions","items":[]}',
+  search: '{"kind":"search","items":[],"hasMore":true}',
   workspaces: '{"kind":"workspaces","items":[],"archivedSessionIds":[]}',
   agentPresets: '{"kind":"agent-presets","presets":[],"authorable":false,"hasDocument":false}',
   defaultModel: '{"kind":"default-model","selection":{"provider":"openai","model":"gpt-5"}}',
@@ -56,6 +57,21 @@ describe("wire parity with the client contract", () => {
     const frame = sessionsFrame([{ sessionId: "s1", updatedAt: 1, running: true, blank: false }]);
     expectParity(frame, OFFICIAL.sessions, "sessions");
     expect(Object.keys(frame as Record<string, unknown>)).not.toContain("sessions");
+  });
+
+  it("search results key is `items` with snippet entries (regression: 2026-09-11 always-zero results)", () => {
+    // official fixture: {"kind":"search","items":[],"hasMore":true}
+    // client decodes each entry as GatewaySearchItem{sessionId, snippet} and
+    // reads frame.items — a `sessions` key or missing snippet yields zero rows.
+    const frame = {
+      kind: "search",
+      query: "q",
+      items: [{ sessionId: "s1", snippet: "matched text" }],
+      hasMore: false,
+    };
+    expectParity(frame, OFFICIAL.search, "search");
+    expect(Object.keys(frame)).not.toContain("sessions");
+    expect(frame.items[0]).toHaveProperty("snippet");
   });
 
   it("workspaces carry items + archivedSessionIds, never `workspaces`", () => {

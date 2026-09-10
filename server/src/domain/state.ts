@@ -188,6 +188,15 @@ export class SessionState {
     return event;
   }
 
+  /** Latest TodoWrite projection (client task card); undefined = never written. */
+  private todosInternal: readonly { content: string; status: "pending" | "in_progress" | "completed" }[] | undefined;
+  get todos(): readonly { content: string; status: "pending" | "in_progress" | "completed" }[] | undefined {
+    return this.todosInternal;
+  }
+  setTodos(todos: readonly { content: string; status: "pending" | "in_progress" | "completed" }[] | undefined): void {
+    this.todosInternal = todos;
+  }
+
   /** Replace the buffered event at a seq (used by canonical assistant/message replacing chunks). */
   replaceAt(seq: number, type: SessionEventType, time: number, data: unknown): SessionEvent {
     const index = this.buffer.findIndex((e) => e.seq === seq);

@@ -38,6 +38,7 @@ import {
 import { ERROR_CODES } from "../protocol/error-codes.js";
 import { SessionRegistry } from "../domain/registry.js";
 import type { SessionState } from "../domain/state.js";
+import { TaskFolder, todosFromAnyToolCalls, todosFromEventToolCalls } from "../domain/todos.js";
 import { EventBroadcaster } from "../stream/broadcaster.js";
 import { ClaudeRunner, type PermissionOutcome, type SdkQueryFn } from "../backend/claude-runner.js";
 import { pageHistory } from "../backend/history.js";
@@ -70,6 +71,8 @@ const HOME = process.env.HOME ?? "/home/ubuntu";
 
 export class SessionOrchestrator {
   private runners = new Map<string, ClaudeRunner>();
+  /** TaskCreate/TaskUpdate fold state per session (the family is stateful across events). */
+  private taskFolders = new Map<string, TaskFolder>();
   private queues = new Map<string, QueueItem[]>();
   private pendingApprovals = new Map<string, PendingApproval>();
   private workspaceIds = new Map<string, string>(); // workspaceId → path
@@ -258,7 +261,7 @@ export class SessionOrchestrator {
         this.handleArchive(conn, frame.sessionId);
         return;
       case "search":
-        conn.ws.send(JSON.stringify({ kind: "search", query: frame.query, sessions: this.registry.search(frame.query) }));
+        conn.ws.send(JSON.stringify({ kind: "search", query: frame.query, items: this.registry.search(frame.query), hasMore: false }));
         return;
       case "models":
         conn.ws.send(JSON.stringify(this.buildModels(frame.sessionId)));
@@ -332,9 +335,11 @@ export class SessionOrchestrator {
       case "queue-update":
         this.handleQueueUpdate(conn, frame);
         return;
+      case "tasks":
+        conn.ws.send(JSON.stringify(this.buildTasks(frame.sessionId)));
+        return;
       case "context-usage":
       case "session-stats":
-      case "tasks":
       case "goal":
         conn.ws.send(JSON.stringify(this.buildStatsOrEmpty(frame.type, frame.sessionId)));
         return;
@@ -434,6 +439,7 @@ export class SessionOrchestrator {
         {
           onEvents: (events) => {
             for (const event of events) this.broadcaster.broadcastEvent(state.sessionId, event, Date.now());
+            this.maybeUpdateTodos(state, events);
           },
         },
       );
@@ -883,6 +889,69 @@ export class SessionOrchestrator {
     } catch {
       conn.ws.send(JSON.stringify(errorFrame(ERROR_CODES.BAD_REQUEST, `cannot create ${target}`, "directory-create")));
     }
+  }
+
+  /** tasks frame: real todos from memory; transcript rescan as restart fallback. */
+  private buildTasks(sessionId: string): OutboundFrame {
+    const state = this.registry.get(sessionId);
+    if (state === undefined) return errorFrame(ERROR_CODES.SESSION_NOT_FOUND, sessionId, "tasks", sessionId);
+    let todos = state.todos;
+    if (todos === undefined && state.metadata.ccSessionId !== undefined) {
+      // never written in this process: rebuild from the CC transcript (the
+      // canonical events there carry the same toolCalls shape). Task* calls
+      // are stateful across events, so the whole replay is folded in order;
+      // a TodoWrite anywhere wins (its list is complete on every call).
+      const path = transcriptPath(HOME, state.metadata.cwd, state.metadata.ccSessionId);
+      const folder = new TaskFolder();
+      let folded: ReturnType<TaskFolder["list"]> | undefined;
+      for (const item of this.transcript.read(path)) {
+        if (item.type !== "assistant/message") continue;
+        const toolCalls = ((item.data as { toolCalls?: Parameters<typeof todosFromEventToolCalls>[0] }).toolCalls) ?? [];
+        const todoWrite = todosFromAnyToolCalls(toolCalls);
+        if (todoWrite !== undefined) folded = todoWrite;
+        else if (toolCalls.some((c) => c.name === "TaskCreate" || c.name === "TaskUpdate")) folded = folder.fold(toolCalls);
+      }
+      if (folded !== undefined) {
+        todos = folded;
+        state.setTodos(folded);
+        this.taskFolders.set(sessionId, folder);
+      }
+    }
+    return { kind: "tasks", sessionId, asOfSeq: state.lastSeq, todos: todos ?? null };
+  }
+
+  /**
+   * Official push kind is `tasks-updated` (lib/index.mjs:2835): the agent's
+   * TodoWrite lands the moment its canonical assistant/message is emitted,
+   * so the phone sees progress while the turn is still running.
+   */
+  private maybeUpdateTodos(state: SessionState, events: readonly { type: string; data?: unknown }[]): void {
+    let latest: ReturnType<typeof todosFromAnyToolCalls> | undefined;
+    let sawTaskTool = false;
+    for (const event of events) {
+      if (event.type !== "assistant/message") continue;
+      const toolCalls = ((event.data as { toolCalls?: Parameters<typeof todosFromEventToolCalls>[0] })?.toolCalls) ?? [];
+      const todoWrite = todosFromAnyToolCalls(toolCalls);
+      if (todoWrite !== undefined) {
+        latest = todoWrite; // classic API: the full list rides every call
+        continue;
+      }
+      if (toolCalls.some((c) => c.name === "TaskCreate" || c.name === "TaskUpdate")) {
+        sawTaskTool = true;
+        const folder = this.taskFolders.get(state.sessionId) ?? new TaskFolder();
+        this.taskFolders.set(state.sessionId, folder);
+        folder.fold(toolCalls);
+      }
+    }
+    if (latest === undefined) {
+      if (!sawTaskTool) return; // never written: keep todos:null (client hides the card)
+      latest = (this.taskFolders.get(state.sessionId) ?? new TaskFolder()).list();
+    }
+    state.setTodos(latest);
+    this.broadcaster.broadcastControl(
+      { kind: "tasks-updated", sessionId: state.sessionId, asOfSeq: state.lastSeq, todos: latest },
+      Date.now(),
+    );
   }
 
   private buildStatsOrEmpty(kind: string, sessionId: string): OutboundFrame {

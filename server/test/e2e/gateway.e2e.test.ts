@@ -650,3 +650,163 @@ describe("session titles reach the phone (Host-side derivation)", () => {
     await stack.stackServer.close();
   });
 });
+
+describe("todos projection reaches the phone (P0-2b)", () => {
+  const TODO_SCRIPT: SdkMessageLike[] = [
+    { type: "system", subtype: "init", session_id: "cc-todo-1" },
+    { type: "stream_event", event: { type: "message_start", message: { id: "msg_todo" } } },
+    {
+      type: "stream_event",
+      event: { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "call_todo", name: "TodoWrite" } },
+    },
+    {
+      type: "stream_event",
+      event: { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: "{\"todos\":[{\"content\":\"修复 search\",\"status\":\"completed\"},{\"content\":\"实现 todos 投影\",\"status\":\"in_progress\"}]}" } },
+    },
+    {
+      type: "assistant",
+      message: { role: "assistant", id: "msg_todo", content: [{ type: "tool_use", id: "call_todo", name: "TodoWrite", input: { todos: [
+        { content: "修复 search", status: "completed" },
+        { content: "实现 todos 投影", status: "in_progress" },
+      ] } }] },
+    },
+    { type: "stream_event", event: { type: "message_stop" } },
+    { type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "call_todo", content: "Todos have been modified successfully" }] } },
+    { type: "stream_event", event: { type: "message_start", message: { id: "msg_done" } } },
+    { type: "stream_event", event: { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } } },
+    { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "干完了" } } },
+    { type: "assistant", message: { role: "assistant", id: "msg_done", content: [{ type: "text", text: "干完了" }] } },
+    { type: "stream_event", event: { type: "message_stop" } },
+    { type: "result", subtype: "success", usage: { input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } },
+  ];
+
+  it("TodoWrite canonical lands as tasks-updated, and tasks request returns it", async () => {
+    const stack = await openStack((options: SdkSpawnOptions): SdkQueryHandle => ({
+      async *[Symbol.asyncIterator]() {
+        for (const message of TODO_SCRIPT) {
+          if (options.abortController.signal.aborted) return;
+          yield message;
+        }
+      },
+      abort() { options.abortController.abort(); },
+    }));
+    const client = await pairedOn(stack.actualPort);
+    client.ws.send(JSON.stringify({ type: "session-create", requestId: "td1", cwd: "/home/ubuntu" }));
+    const created = await client.next<{ sessionId: string }>({ kind: "session-created" });
+    const sid = created.sessionId;
+    client.ws.send(JSON.stringify({ type: "message", sessionId: sid, text: "按计划干活" }));
+    await client.next({ kind: "sent" });
+
+    // 1) the official PUSH kind arrives mid-turn (lib/index.mjs:2835)
+    const pushed = await client.next<{ kind: string; sessionId: string; todos: { content: string; status: string }[] }>(
+      { kind: "tasks-updated", sessionId: sid },
+    );
+    expect(pushed.todos).toEqual([
+      { content: "修复 search", status: "completed" },
+      { content: "实现 todos 投影", status: "in_progress" },
+    ]);
+
+    // 2) on-demand tasks request returns the same projection (not null)
+    client.ws.send(JSON.stringify({ type: "tasks", sessionId: sid }));
+    const answered = await client.next<{ kind: string; sessionId: string; todos: { content: string; status: string }[] }>(
+      { kind: "tasks", sessionId: sid },
+    );
+    expect(answered.todos?.[0]?.content).toBe("修复 search");
+    client.ws.close();
+    await stack.stackServer.close();
+  });
+
+describe("todos projection — TaskCreate/TaskUpdate family (P0-2b live shape)", () => {
+  const canonical = (id: string, text: string, toolCalls: unknown[]) => ({
+    type: "stream_event",
+    event: { type: "message_start", message: { id: `msg_${id}` } },
+  });
+  void canonical;
+
+  const TASK_SCRIPT: SdkMessageLike[] = [
+    { type: "system", subtype: "init", session_id: "cc-task-1" },
+    // canonical 1: TaskCreate #1
+    { type: "stream_event", event: { type: "message_start", message: { id: "msg_t1" } } },
+    { type: "stream_event", event: { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "call_tc1", name: "TaskCreate" } } },
+    { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: "{\"subject\":\"验证 tasks 投影\"}" } } },
+    { type: "assistant", message: { role: "assistant", id: "msg_t1", content: [{ type: "tool_use", id: "call_tc1", name: "TaskCreate", input: { subject: "验证 tasks 投影", activeForm: "验证 tasks 投影" } }] } },
+    { type: "stream_event", event: { type: "message_stop" } },
+    { type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "call_tc1", content: "Task #1 created successfully" }] } },
+    // canonical 2: TaskCreate #2
+    { type: "stream_event", event: { type: "message_start", message: { id: "msg_t2" } } },
+    { type: "stream_event", event: { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "call_tc2", name: "TaskCreate" } } },
+    { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: "{\"subject\":\"收尾\"}" } } },
+    { type: "assistant", message: { role: "assistant", id: "msg_t2", content: [{ type: "tool_use", id: "call_tc2", name: "TaskCreate", input: { subject: "收尾" } }] } },
+    { type: "stream_event", event: { type: "message_stop" } },
+    { type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "call_tc2", content: "Task #2 created successfully" }] } },
+    // canonical 3: TaskUpdate {taskId:"1", status:"in_progress"} — own canonical, unrelated callId
+    { type: "stream_event", event: { type: "message_start", message: { id: "msg_t3" } } },
+    { type: "stream_event", event: { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "call_tu1", name: "TaskUpdate" } } },
+    { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: "{\"taskId\":\"1\",\"status\":\"in_progress\"}" } } },
+    { type: "assistant", message: { role: "assistant", id: "msg_t3", content: [{ type: "tool_use", id: "call_tu1", name: "TaskUpdate", input: { taskId: "1", status: "in_progress" } }] } },
+    { type: "stream_event", event: { type: "message_stop" } },
+    { type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "call_tu1", content: "Updated task #1 status" }] } },
+    // closing text
+    { type: "stream_event", event: { type: "message_start", message: { id: "msg_t4" } } },
+    { type: "stream_event", event: { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } } },
+    { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "清单建好了" } } },
+    { type: "assistant", message: { role: "assistant", id: "msg_t4", content: [{ type: "text", text: "清单建好了" }] } },
+    { type: "stream_event", event: { type: "message_stop" } },
+    { type: "result", subtype: "success", usage: { input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } },
+  ];
+
+  it("cross-event TaskUpdate lands on the first created task (live sequence)", async () => {
+    const stack = await openStack((options: SdkSpawnOptions): SdkQueryHandle => ({
+      async *[Symbol.asyncIterator]() {
+        for (const message of TASK_SCRIPT) {
+          if (options.abortController.signal.aborted) return;
+          yield message;
+        }
+      },
+      abort() { options.abortController.abort(); },
+    }));
+    const client = await pairedOn(stack.actualPort);
+    client.ws.send(JSON.stringify({ type: "session-create", requestId: "tk1", cwd: "/home/ubuntu" }));
+    const created = await client.next<{ sessionId: string }>({ kind: "session-created" });
+    const sid = created.sessionId;
+    client.ws.send(JSON.stringify({ type: "message", sessionId: sid, text: "建清单" }));
+    await client.next({ kind: "sent" });
+
+    // The update is the last Task* frame; wait past the turn end for the final state
+    await client.next({ kind: "event", "event.type": "turn/end" });
+    const pushes = client.log.filter((f) => f["kind"] === "tasks-updated") as unknown as { todos: { content: string; status: string }[] }[];
+    expect(pushes.length).toBeGreaterThanOrEqual(3); // create #1, create #2, update
+    const finalPush = pushes[pushes.length - 1];
+    expect(finalPush.todos).toEqual([
+      { content: "验证 tasks 投影", status: "in_progress" },
+      { content: "收尾", status: "pending" },
+    ]);
+
+    // on-demand pull agrees with the push
+    client.ws.send(JSON.stringify({ type: "tasks", sessionId: sid }));
+    const answered = await client.next<{ todos: { content: string; status: string }[] }>({ kind: "tasks", sessionId: sid });
+    expect(answered.todos).toEqual([
+      { content: "验证 tasks 投影", status: "in_progress" },
+      { content: "收尾", status: "pending" },
+    ]);
+    client.ws.close();
+    await stack.stackServer.close();
+  });
+});
+
+  it("a session without TodoWrite keeps todos:null (client hides the card)", async () => {
+    const stack = await openStack(scriptedQuery);
+    const client = await pairedOn(stack.actualPort);
+    client.ws.send(JSON.stringify({ type: "session-create", requestId: "td2", cwd: "/home/ubuntu" }));
+    const created = await client.next<{ sessionId: string }>({ kind: "session-created" });
+    client.ws.send(JSON.stringify({ type: "message", sessionId: created.sessionId, text: "hi" }));
+    await client.next({ kind: "sent" });
+    await client.next({ kind: "event", "event.type": "turn/end" });
+    client.ws.send(JSON.stringify({ type: "tasks", sessionId: created.sessionId }));
+    const answered = await client.next<{ todos: unknown }>({ kind: "tasks" });
+    expect(answered.todos).toBeNull();
+    client.ws.close();
+    await stack.stackServer.close();
+  });
+});
+

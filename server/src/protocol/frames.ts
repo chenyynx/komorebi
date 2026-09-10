@@ -22,6 +22,7 @@ export const CAPABILITIES: readonly string[] = [
   // Add a capability back only when its orchestrator case is real.
   "split-channels",
   "images",
+  "tasks",
   "session-cancel",
   "session-archive",
   "session-rename",
