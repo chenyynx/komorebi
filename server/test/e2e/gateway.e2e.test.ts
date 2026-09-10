@@ -74,9 +74,9 @@ interface Client {
   next: <T = Record<string, unknown>>(match?: Record<string, unknown>) => Promise<T>;
 }
 
-function connectTo(targetPort: number, pairingCode: string, deviceId: string): Client {
+function connectTo(targetPort: number, pairingCode: string, deviceId: string, channel?: string): Client {
   const ws = new WebSocket(`ws://127.0.0.1:${targetPort}/ws/mobile`, ["dsh-mobile-v1", `dsh-pair.${pairingCode}`], {
-    headers: { "x-dsh-device-id": deviceId },
+    headers: { "x-dsh-device-id": deviceId, ...(channel ? { "x-dsh-channel": channel } : {}) },
   });
   const queue: Record<string, unknown>[] = [];
   const log: Record<string, unknown>[] = [];
@@ -148,9 +148,9 @@ async function openStack(query: (options: SdkSpawnOptions) => SdkQueryHandle): P
 }
 
 /** Pair a client against any stack port, waiting through paired+hello. */
-async function pairedOn(targetPort: number): Promise<Client> {
+async function pairedOn(targetPort: number, channel?: string): Promise<Client> {
   const { code } = devices.issuePairingCode();
-  const client = connectTo(targetPort, code, `e2e-${Math.random()}`);
+  const client = connectTo(targetPort, code, `e2e-${Math.random()}`, channel);
   await client.next({ kind: "paired" });
   const hello = await client.next<{ kind: string; capabilities: string[] }>({ kind: "hello" });
   expect(hello.capabilities).toContain("split-channels");
@@ -583,6 +583,23 @@ describe("default-model control frames — client contract", () => {
     });
     expect(frame.selection).toBeTruthy();
     expect(frame.provider).toBeUndefined();
+    client.ws.close();
+  });
+});
+
+describe("connect-time baselines (official lane gate)", () => {
+  it("control lane gets the archives baseline", async () => {
+    const client = await pairedOn(port, "control");
+    const archives = await client.next<{ archivedSessionIds: string[] }>({ kind: "session-archives" });
+    expect(Array.isArray(archives.archivedSessionIds)).toBe(true);
+    client.ws.close();
+  });
+
+  it("conversation lane must NOT get it (official lib/index.mjs:2594, gateway.test.mjs:328)", async () => {
+    const client = await pairedOn(port, "conversation");
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    const got = client.log.some((f) => (f as { kind?: string }).kind === "session-archives");
+    expect(got).toBe(false);
     client.ws.close();
   });
 });

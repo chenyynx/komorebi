@@ -177,8 +177,12 @@ export class SessionOrchestrator {
 
   onOpen(conn: AuthenticatedConnection): void {
     this.broadcaster.track(conn);
-    // protocol: new connections receive the current archives set
-    conn.ws.send(JSON.stringify({ kind: "session-archives", archivedSessionIds: [...this.registry.archivedSet] }));
+    // protocol: new connections receive the current archives set.
+    // 官方 lib/index.mjs:2594 只在**非 conversation 通道**发这份 baseline（客户端按通道有
+    // 期望：官方测试 gateway.test.mjs:328 断言 conversation 侧收不到 session-archives）。
+    if (conn.lane !== "conversation") {
+      conn.ws.send(JSON.stringify({ kind: "session-archives", archivedSessionIds: [...this.registry.archivedSet] }));
+    }
   }
 
   onClose(conn: AuthenticatedConnection): void {
