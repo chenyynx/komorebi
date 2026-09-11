@@ -116,3 +116,40 @@ describe("projections", () => {
     expect(page.asOfSeq).toBe(0);
   });
 });
+
+describe("history lookback cap (P0-5: client froze pulling 7k+ events)", () => {
+  it("pagination terminates at the cap with a normal hasMore=false", () => {
+    const state = buildBuffer(2000);
+    const buffer = state.bufferedEvents;
+    let request: HistoryRequest = { sessionId: "s" };
+    let pulled = 0;
+    let pages = 0;
+    for (;;) {
+      const page = pageHistory(buffer, request);
+      pulled += page.events.length;
+      pages += 1;
+      if (!page.hasMore) break;
+      expect(page.nextBeforeSeq).toBeDefined();
+      request = { sessionId: "s", beforeSeq: page.nextBeforeSeq };
+      expect(pages).toBeLessThan(100); // hard loop guard
+    }
+    expect(pulled).toBeLessThanOrEqual(800);
+    expect(pages).toBeGreaterThan(1);
+  });
+
+  it("sessions under the cap are unaffected", () => {
+    const state = buildBuffer(120);
+    const buffer = state.bufferedEvents;
+    let request: HistoryRequest = { sessionId: "s" };
+    let pulled = 0;
+    for (;;) {
+      const page = pageHistory(buffer, request);
+      pulled += page.events.length;
+      if (!page.hasMore) break;
+      expect(page.nextBeforeSeq).toBeDefined();
+      request = { sessionId: "s", beforeSeq: page.nextBeforeSeq };
+      expect(pulled).toBeLessThan(200);
+    }
+    expect(pulled).toBe(120);
+  });
+});

@@ -28,6 +28,14 @@ export interface HistoryPage {
 
 const DEFAULT_MAX_MESSAGES = 50;
 const DEFAULT_MAX_BYTES = 4 * 1024 * 1024;
+/**
+ * Hard cap on how far back a single history backfill may walk. The official
+ * client loops `hasMore` pages until completion and projects every event on
+ * the main thread — a session with tens of thousands of events (live tool
+ * streams) freezes it. 800 events (~16 pages) keeps recent context while the
+ * older tail simply reports hasMore:false.
+ */
+const HISTORY_MAX_TOTAL_EVENTS = 800;
 const TOOL_RESULT_PREVIEW_CAP = 2000;
 
 /** Apply view=conversation trimming to one event (returns null to drop). */
@@ -64,6 +72,16 @@ export function pageHistory(
   if (beforeSeq !== undefined) {
     pool = pool.filter((e) => e.seq < beforeSeq);
   }
+  // Cap the lookback window: events older than the newest N are invisible to
+  // pagination, so the client's loop terminates with a normal completed
+  // outcome instead of walking the entire buffer.
+  const capped = buffer.length > HISTORY_MAX_TOTAL_EVENTS;
+  const capFloorSeq = capped
+    ? buffer[buffer.length - HISTORY_MAX_TOTAL_EVENTS]?.seq ?? Number.NEGATIVE_INFINITY
+    : Number.NEGATIVE_INFINITY;
+  if (capped) {
+    pool = pool.filter((e) => e.seq >= capFloorSeq);
+  }
   if (view === "conversation") {
     pool = pool
       .map(trimEvent)
@@ -93,8 +111,15 @@ export function pageHistory(
   slice = slice.slice(start);
 
   // older events exist iff the pool held more than the final page (covers
-  // both maxMessages slicing and byte-budget trimming)
-  const hasMore = pool.length > slice.length;
+  // both maxMessages slicing, byte-budget trimming and the total-events cap).
+  // At the cap floor we report hasMore=false so the client finishes normally.
+  let hasMore = pool.length > slice.length;
+  if (hasMore && capped && capFloorSeq !== Number.NEGATIVE_INFINITY) {
+    const oldestInPage = slice.length > 0 ? slice[0]?.seq : undefined;
+    if (oldestInPage !== undefined && oldestInPage <= capFloorSeq) {
+      hasMore = false;
+    }
+  }
   const oldest = slice.length > 0 ? slice[0] : undefined;
   const nextBeforeSeq = hasMore && oldest !== undefined ? oldest.seq : undefined;
   const asOfSeq = buffer.length > 0 ? buffer[buffer.length - 1]?.seq ?? 0 : 0;
