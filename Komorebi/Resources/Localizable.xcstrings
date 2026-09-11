@@ -642,7 +642,6 @@
       }
     },
     "cwd": {},
-    "deepseek": {},
     "defaults.effort.suffix": {
       "extractionState": "manual",
       "localizations": {
