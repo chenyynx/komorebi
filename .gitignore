@@ -34,3 +34,4 @@ captures/
 .env
 .env.*
 !.env.example
+server/.claude/
