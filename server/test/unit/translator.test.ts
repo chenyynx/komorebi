@@ -17,6 +17,24 @@ function translateAll(messages: SdkMessageLike[]): { events: { type: string; dat
   return { events, stats: { ...translator.stats } };
 }
 
+describe("session-scoped turn numbering (P0-4)", () => {
+  it("drafts carry the turn number handed in at construction", () => {
+    const translator = new EventTranslator(7);
+    const events = [
+      { type: "system", subtype: "init", session_id: "cc-x" },
+      { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "hi" } } },
+    ].flatMap((m) => translator.translate(m as SdkMessageLike).map((d) => d.data));
+    expect(events.every((d) => d["turn"] === 7)).toBe(true);
+    expect(translator.currentTurn).toBe(7);
+  });
+
+  it("defaults to turn 0 (back-compat for a single-prompt translator)", () => {
+    const translator = new EventTranslator();
+    const events = translator.translate({ type: "system", subtype: "init" } as SdkMessageLike);
+    expect(events[0]?.data["turn"]).toBe(0);
+  });
+});
+
 describe("stream_event translation (SDK 0.3.267 raw Messages API forms)", () => {
   it("text_delta → assistant/chunk text-delta", () => {
     const { events } = translateAll([

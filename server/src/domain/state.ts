@@ -44,6 +44,14 @@ const MAX_BUFFERED_EVENTS = 5000;
 
 export class SessionState {
   private seqCounter = 0;
+  /**
+   * Next turn number (session-scoped: one user prompt = one turn). Must NOT be
+   * a fresh-translator-zero: the client keys streamed chunks by `turn-step`,
+   * so a reused turn number makes the trajectory projection merge unrelated
+   * chunks and fail closed ("replacement node wire value 无效", 2026-09-11).
+   */
+  private turnCounter = 0;
+  private turnSeededFlag = false;
   private buffer: SessionEvent[] = [];
   private running = false;
   createdAt: number;
@@ -129,6 +137,24 @@ export class SessionState {
     if (input.createdAt !== undefined) this.createdAt = input.createdAt;
     if (input.seq !== undefined && input.seq > this.seqCounter) this.seqCounter = input.seq;
     this.running = false;
+  }
+
+  /** Next turn number to allocate (consumed once per started turn). */
+  nextTurn(): number {
+    return this.turnCounter++;
+  }
+
+  /** Raise the counter so replayed/legacy turns never collide with new ones. */
+  seedTurnCounter(next: number): void {
+    if (next > this.turnCounter) this.turnCounter = next;
+  }
+
+  get turnSeeded(): boolean {
+    return this.turnSeededFlag;
+  }
+
+  markTurnSeeded(): void {
+    this.turnSeededFlag = true;
   }
 
   /** Persistable projection of this session (used by the index store). */

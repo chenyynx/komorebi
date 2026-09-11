@@ -107,7 +107,7 @@ interface PendingCanonical {
  * and closes it at result → next prompt opens turn N+1.
  */
 export class EventTranslator {
-  private turn = 0;
+  private turn: number;
   private step = 0;
   /** Step owned by the API message currently streaming (snapshotted at message_start). */
   private messageStep = 0;
@@ -118,6 +118,11 @@ export class EventTranslator {
   /** Blocks of the API message whose canonical is still being assembled. */
   private pending: PendingCanonical | undefined;
   readonly stats: TranslatorStats = { unknownTypes: 0, skippedBlocks: 0, droppedEmptyCanonicals: 0 };
+
+  /** `startingTurn` is the session-scoped turn number for this prompt cycle. */
+  constructor(startingTurn = 0) {
+    this.turn = startingTurn;
+  }
 
   get currentTurn(): number {
     return this.turn;

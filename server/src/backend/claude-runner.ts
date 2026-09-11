@@ -118,7 +118,7 @@ export class ClaudeRunner {
       throw new Error("runner already active");
     }
     const abortController = new AbortController();
-    const translator = new EventTranslator();
+    const translator = new EventTranslator(this.state.nextTurn());
     this.translator = translator;
     this.terminated = false;
     this.cancelled = false;

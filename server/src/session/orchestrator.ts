@@ -445,6 +445,7 @@ export class SessionOrchestrator {
   }
 
   private startTurn(state: SessionState, text: string, images?: readonly { mediaType: string; data: string; name?: string }[]): void {
+    this.ensureTurnSeed(state);
     const userEvent = state.emit("user/message", Math.floor(Date.now() / 1000), { text, source: "user", images: images ?? [] });
     this.broadcaster.broadcastEvent(state.sessionId, userEvent, Date.now());
 
@@ -487,6 +488,31 @@ export class SessionOrchestrator {
           ? this.requestQuestion(state.sessionId, input)
           : this.requestApproval(state.sessionId, toolName, input),
     });
+  }
+
+  /**
+   * Turn numbers are session-scoped (official semantics: one user prompt = one
+   * turn). A fresh gateway process only knows the turns recorded in the CC
+   * transcript, so seed the counter from it once per session — without this,
+   * new live turns reuse turn 0 and collide with replayed history, which the
+   * client's turn-step keying turns into a failed-closed trajectory store.
+   */
+  private ensureTurnSeed(state: SessionState): void {
+    if (state.turnSeeded) return;
+    state.markTurnSeeded();
+    const ccSessionId = state.metadata.ccSessionId;
+    if (ccSessionId === undefined) return; // brand-new session: turn 0 is correct
+    try {
+      const path = transcriptPath(HOME, state.metadata.cwd, ccSessionId);
+      let maxTurn = -1;
+      for (const item of this.transcript.read(path)) {
+        const turn = (item.data as { turn?: unknown }).turn;
+        if (typeof turn === "number" && turn > maxTurn) maxTurn = turn;
+      }
+      if (maxTurn >= 0) state.seedTurnCounter(maxTurn + 1);
+    } catch {
+      // best effort (R3): an unreadable transcript keeps the counter at 0
+    }
   }
 
   /** Drain one queued message after a turn ends. */

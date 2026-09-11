@@ -17,6 +17,7 @@ import { EventBroadcaster } from "../../src/stream/broadcaster";
 import { SessionOrchestrator } from "../../src/session/orchestrator";
 import { GatewayServer } from "../../src/ws/server";
 import type { SdkMessageLike, SdkQueryHandle, SdkSpawnOptions } from "../../src/backend/claude-runner";
+import type { TranscriptReader } from "../../src/backend/transcript";
 
 const dataDir = mkdtempSync(join(tmpdir(), "mgw-e2e-"));
 let port = 0;
@@ -127,13 +128,13 @@ function connectTo(targetPort: number, pairingCode: string, deviceId: string, ch
   };
 }
 
-async function openStack(query: (options: SdkSpawnOptions) => SdkQueryHandle): Promise<{
+async function openStack(query: (options: SdkSpawnOptions) => SdkQueryHandle, transcript?: TranscriptReader): Promise<{
   actualPort: number; stackServer: GatewayServer; orch: SessionOrchestrator;
 }> {
   const config = loadConfig({ port: 0, dataDir });
   const registry = new SessionRegistry();
   const broadcaster = new EventBroadcaster();
-  const orch = new SessionOrchestrator(config, registry, broadcaster, query);
+  const orch = new SessionOrchestrator(config, registry, broadcaster, query, transcript);
   const stackServer = new GatewayServer(config, devices, {
     onFrame: (conn, frame) => orch.onFrame(conn, frame as never),
     onOpen: (conn) => orch.onOpen(conn),
@@ -953,5 +954,80 @@ describe("question channel — AskUserQuestion special case (P0-3)", () => {
     await client.next({ kind: "event", "event.type": "turn/end" });
     client.ws.close(); conv.ws.close(); ctrl2.ws.close();
     await stack.stackServer.close();
+  });
+});
+
+describe("turn numbering is session-scoped (P0-4: trajectory 'replacement node wire value 无效')", () => {
+  it("a second prompt opens turn 1 — reusing turn 0 merges chunks and breaks the client's trajectory projection", async () => {
+    const stack = await openStack(scriptedQuery);
+    const client = await pairedOn(stack.actualPort);
+    client.ws.send(JSON.stringify({ type: "session-create", requestId: "tn1", cwd: "/home/ubuntu" }));
+    const created = await client.next<{ sessionId: string }>({ kind: "session-created" });
+    const sid = created.sessionId;
+
+    client.ws.send(JSON.stringify({ type: "message", sessionId: sid, text: "第一回合" }));
+    await client.next({ kind: "sent" });
+    await client.next({ kind: "event", "event.type": "turn/end" });
+
+    client.ws.send(JSON.stringify({ type: "message", sessionId: sid, text: "第二回合" }));
+    await client.next({ kind: "sent" });
+    await client.next({ kind: "event", "event.type": "turn/end" });
+
+    client.ws.send(JSON.stringify({ type: "history", sessionId: sid }));
+    const history = await client.next<{ events: { type: string; data?: { turn?: number } }[] }>({ kind: "history" });
+    const turns = history.events.filter((e) => e.type === "turn/start").map((e) => e.data?.turn);
+    expect(turns).toEqual([0, 1]); // 0,0 was the bug: colliding turn-step keys
+    // the bug's signature: the second prompt reused turn 0, so its streamed
+    // events landed in the first turn's turn-step bucket. Assert the split:
+    // everything after the first turn/end belongs to turn 1.
+    const endIndex = history.events.findIndex((e) => e.type === "turn/end");
+    expect(endIndex).toBeGreaterThan(0);
+    const secondTurn = history.events.slice(endIndex + 1);
+    expect(secondTurn.length).toBeGreaterThan(0);
+    expect(secondTurn.every((e) => e.type === "user/message" || e.data?.turn === 1)).toBe(true);
+    client.ws.close();
+    await stack.stackServer.close();
+  });
+});
+
+describe("turn seed survives a process restart (P0-4 completion: transcript-scan path)", () => {
+  it("a restored session's next live turn continues above replayed history turns", async () => {
+    // Fake on-disk history: TranscriptReader re-derives turns 0 and 1 from it.
+    const replayedItems = [
+      { type: "user/message", time: 1, data: { turn: 0, step: 0, text: "旧一", source: "user" } },
+      { type: "assistant/message", time: 2, data: { turn: 0, step: 1, text: "旧答", reasoning: "", toolCalls: [] } },
+      { type: "user/message", time: 3, data: { turn: 1, step: 0, text: "旧二", source: "user" } },
+      { type: "assistant/message", time: 4, data: { turn: 1, step: 1, text: "旧答二", reasoning: "", toolCalls: [] } },
+    ];
+    const fakeTranscript = { read: () => replayedItems } as unknown as TranscriptReader;
+
+    // Process A: brand-new session (ccSessionId unbound at first turn → no
+    // seed), one live prompt consumes turn 0.
+    const a = await openStack(scriptedQuery, fakeTranscript);
+    const ca = await pairedOn(a.actualPort);
+    ca.ws.send(JSON.stringify({ type: "session-create", requestId: "ts-a", cwd: "/home/ubuntu" }));
+    const sid = (await ca.next<{ sessionId: string }>({ kind: "session-created" })).sessionId;
+    ca.ws.send(JSON.stringify({ type: "message", sessionId: sid, text: "第一回合" }));
+    await ca.next({ kind: "sent" });
+    await ca.next({ kind: "event", "event.type": "turn/end" });
+    ca.ws.close();
+    await a.stackServer.close();
+
+    // Process B ("restart"): adopt the same session id back via the F4 rescue
+    // path, then prompt once. Without the transcript seed this turn would be 0
+    // and collide with replayed turn 0 (the trajectory fail-closed signature).
+    const b = await openStack(scriptedQuery, fakeTranscript);
+    const adopted = b.orch.adoptSession({ sessionId: sid, ccSessionId: "cc-e2e-1", cwd: "/home/ubuntu" });
+    expect(adopted.adopted).toBe(true);
+    const cb = await pairedOn(b.actualPort);
+    cb.ws.send(JSON.stringify({ type: "message", sessionId: sid, text: "重启后第一回合" }));
+    await cb.next({ kind: "sent" });
+    await cb.next({ kind: "event", "event.type": "turn/end" });
+    cb.ws.send(JSON.stringify({ type: "history", sessionId: sid }));
+    const history = await cb.next<{ events: { type: string; data?: { turn?: number } }[] }>({ kind: "history" });
+    const tailTurns = history.events.filter((e) => e.type === "turn/start").map((e) => e.data?.turn);
+    expect(tailTurns[tailTurns.length - 1]).toBe(2);
+    cb.ws.close();
+    await b.stackServer.close();
   });
 });

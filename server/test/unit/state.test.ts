@@ -10,6 +10,30 @@ function newState(): SessionState {
   return new SessionState("sess-1", "/home/ubuntu/work", 1787111700000);
 }
 
+describe("session-scoped turn numbering (P0-4)", () => {
+  it("nextTurn allocates monotonically and never repeats across turns", () => {
+    const state = newState();
+    expect(state.nextTurn()).toBe(0);
+    expect(state.nextTurn()).toBe(1);
+    expect(state.nextTurn()).toBe(2);
+  });
+
+  it("seedTurnCounter continues above replayed/legacy turns", () => {
+    const state = newState();
+    state.seedTurnCounter(9);
+    expect(state.nextTurn()).toBe(9);
+    state.seedTurnCounter(3); // never goes backwards
+    expect(state.nextTurn()).toBe(10);
+  });
+
+  it("turnSeeded gates the one-time transcript seed", () => {
+    const state = newState();
+    expect(state.turnSeeded).toBe(false);
+    state.markTurnSeeded();
+    expect(state.turnSeeded).toBe(true);
+  });
+});
+
 describe("seq allocation", () => {
   it("allocates strictly monotonic seq starting at 0", () => {
     const state = newState();
