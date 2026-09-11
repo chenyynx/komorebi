@@ -15,12 +15,12 @@
                         <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
-                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" image="GhostMarkWhite" translatesAutoresizingMaskIntoConstraints="NO" id="launch-whale">
+                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" image="GhostMarkAdaptive" translatesAutoresizingMaskIntoConstraints="NO" id="launch-whale">
                                 <rect key="frame" x="134.5" y="379.5" width="124" height="93"/>
                             </imageView>
                         </subviews>
                         <viewLayoutGuide key="safeArea" id="launch-safe-area"/>
-                        <color key="backgroundColor" red="0.0863" green="0.0824" blue="0.0588" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <color key="backgroundColor" systemColor="systemBackgroundColor"/>
                         <constraints>
                             <constraint firstItem="launch-whale" firstAttribute="centerX" secondItem="launch-root" secondAttribute="centerX" id="launch-center-x"/>
                             <constraint firstItem="launch-whale" firstAttribute="centerY" secondItem="launch-root" secondAttribute="centerY" id="launch-center-y"/>
@@ -35,7 +35,7 @@
         </scene>
     </scenes>
     <resources>
-        <image name="GhostMarkWhite" width="1254" height="940"/>
+        <image name="GhostMarkAdaptive" width="1254" height="940"/>
         <systemColor name="labelColor">
             <color white="0.0" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
         </systemColor>
