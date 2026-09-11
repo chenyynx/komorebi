@@ -1,7 +1,7 @@
 package com.clarklevis.dsh.shared
 
 /**
- * 与 `DeepSeekHarnessMobileTests/GatewayProtocolTests.swift` 中
+ * 与 `KomorebiTests/GatewayProtocolTests.swift` 中
  * `GatewayProtocolParityFixtures` 逐字保持一致的跨端协议样本。
  */
 object GatewayProtocolFixtures {

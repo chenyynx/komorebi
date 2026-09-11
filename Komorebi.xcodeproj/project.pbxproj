@@ -40,7 +40,7 @@
 		B0C0FFEE0000000000000001 /* HarnessAnimatedBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0C0FFEE0000000000000002 /* HarnessAnimatedBackground.swift */; };
 		B0C0FFEE0000000000000003 /* HarnessBackground.metal in Sources */ = {isa = PBXBuildFile; fileRef = B0C0FFEE0000000000000004 /* HarnessBackground.metal */; };
 		C5F737EBF5077A9BF35E9F64 /* TrajectoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65009160A0642089906B54DF /* TrajectoryView.swift */; };
-		D3A40BFC0B9C8D4B1C8FAA95 /* DeepSeekHarnessMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 430CA64DF207C7EF58574336 /* DeepSeekHarnessMobileApp.swift */; };
+		D3A40BFC0B9C8D4B1C8FAA95 /* KomorebiApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 430CA64DF207C7EF58574336 /* KomorebiApp.swift */; };
 		E20191A4C7B1C0A8FF57CAC1 /* Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCF581253EBCFEB43865AB51 /* Glass.swift */; };
 		E73A2DB9D678DA4B8C01E349 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = 4CE3D78565179C422C796509 /* MarkdownUI */; };
 		C7A710000000000000000001 /* ChatLayout in Frameworks */ = {isa = PBXBuildFile; productRef = C7A710000000000000000003 /* ChatLayout */; };
@@ -54,7 +54,7 @@
 			containerPortal = DBC59CB58F3644757A020517 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 660802D096F9D6E6D171BFE5;
-			remoteInfo = DeepSeekHarnessMobile;
+			remoteInfo = Komorebi;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -66,8 +66,8 @@
 		CA11E000000000000000000A /* L10n.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = L10n.swift; sourceTree = "<group>"; };
 		CA11E000000000000000000C /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		CA11E000000000000000000E /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
-		38457CD5C46830D1CA7E6D73 /* DshMobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DshMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		430CA64DF207C7EF58574336 /* DeepSeekHarnessMobileApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DeepSeekHarnessMobileApp.swift; sourceTree = "<group>"; };
+		38457CD5C46830D1CA7E6D73 /* Komorebi.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Komorebi.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		430CA64DF207C7EF58574336 /* KomorebiApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KomorebiApp.swift; sourceTree = "<group>"; };
 		59B069578BB7F31AD35F601A /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A1A0C0000000000000000002 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		5A37B43613D712F252BA91D7 /* RootView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
@@ -89,7 +89,7 @@
 		A0C0FFEE0000000000000004 /* ConversationTimeline.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ConversationTimeline.swift; sourceTree = "<group>"; };
 		B0C0FFEE0000000000000002 /* HarnessAnimatedBackground.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HarnessAnimatedBackground.swift; sourceTree = "<group>"; };
 		B0C0FFEE0000000000000004 /* HarnessBackground.metal */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.metal; path = HarnessBackground.metal; sourceTree = "<group>"; };
-		B64F29E9B8346B9A678CA487 /* DeepSeekHarnessMobileTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DeepSeekHarnessMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B64F29E9B8346B9A678CA487 /* KomorebiTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KomorebiTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BE407E6C6512836EB108990D /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		D610757C1FF81FD953A9D000 /* WorkspaceView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WorkspaceView.swift; sourceTree = "<group>"; };
 		D98111628697EC1C4FF9878B /* SettingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -146,13 +146,13 @@
 			path = Core;
 			sourceTree = "<group>";
 		};
-		0CABA197D44C2A9AA01CF6FF /* DeepSeekHarnessMobileTests */ = {
+		0CABA197D44C2A9AA01CF6FF /* KomorebiTests */ = {
 			isa = PBXGroup;
 			children = (
 				0B53A008218F24CA9A4DB4D1 /* GatewayProtocolTests.swift */,
 				CA11E0000000000000000011 /* LocalizationCatalogTests.swift */,
 			);
-			path = DeepSeekHarnessMobileTests;
+			path = KomorebiTests;
 			sourceTree = "<group>";
 		};
 		20DF8D6DFD28A5D750C6FC28 /* Frameworks */ = {
@@ -163,7 +163,7 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		3BAEAAE97D242C997E1AB80A /* DeepSeekHarnessMobile */ = {
+		3BAEAAE97D242C997E1AB80A /* Komorebi */ = {
 			isa = PBXGroup;
 			children = (
 				61AF62CCF5C37C8ADF22DF14 /* App */,
@@ -173,7 +173,7 @@
 				C0FFC63B1CD5F1F40418350B /* Views */,
 				7CECE0900CF815A6EB3A938D /* Resources */,
 			);
-			path = DeepSeekHarnessMobile;
+			path = Komorebi;
 			sourceTree = "<group>";
 		};
 		40772A4CC858771C52FF6406 = {
@@ -181,15 +181,15 @@
 			children = (
 				D7854C843240E809A949A26E /* Products */,
 				20DF8D6DFD28A5D750C6FC28 /* Frameworks */,
-				3BAEAAE97D242C997E1AB80A /* DeepSeekHarnessMobile */,
-				0CABA197D44C2A9AA01CF6FF /* DeepSeekHarnessMobileTests */,
+				3BAEAAE97D242C997E1AB80A /* Komorebi */,
+				0CABA197D44C2A9AA01CF6FF /* KomorebiTests */,
 			);
 			sourceTree = "<group>";
 		};
 		61AF62CCF5C37C8ADF22DF14 /* App */ = {
 			isa = PBXGroup;
 			children = (
-				430CA64DF207C7EF58574336 /* DeepSeekHarnessMobileApp.swift */,
+				430CA64DF207C7EF58574336 /* KomorebiApp.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -241,8 +241,8 @@
 		D7854C843240E809A949A26E /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				38457CD5C46830D1CA7E6D73 /* DshMobile.app */,
-				B64F29E9B8346B9A678CA487 /* DeepSeekHarnessMobileTests.xctest */,
+				38457CD5C46830D1CA7E6D73 /* Komorebi.app */,
+				B64F29E9B8346B9A678CA487 /* KomorebiTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -258,9 +258,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		660802D096F9D6E6D171BFE5 /* DeepSeekHarnessMobile */ = {
+		660802D096F9D6E6D171BFE5 /* Komorebi */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 62C8D12628E44A75D40278DD /* Build configuration list for PBXNativeTarget "DeepSeekHarnessMobile" */;
+			buildConfigurationList = 62C8D12628E44A75D40278DD /* Build configuration list for PBXNativeTarget "Komorebi" */;
 			buildPhases = (
 				A9FC00000000000000000003 /* Build KMP Framework */,
 				83446887BD782B48B6E0170F /* Sources */,
@@ -271,18 +271,18 @@
 			);
 			dependencies = (
 			);
-			name = DeepSeekHarnessMobile;
+			name = Komorebi;
 			packageProductDependencies = (
 				4CE3D78565179C422C796509 /* MarkdownUI */,
 				C7A710000000000000000003 /* ChatLayout */,
 			);
-			productName = DshMobile;
-			productReference = 38457CD5C46830D1CA7E6D73 /* DshMobile.app */;
+			productName = Komorebi;
+			productReference = 38457CD5C46830D1CA7E6D73 /* Komorebi.app */;
 			productType = "com.apple.product-type.application";
 		};
-		7515E0402B76392350DE0E00 /* DeepSeekHarnessMobileTests */ = {
+		7515E0402B76392350DE0E00 /* KomorebiTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 97F6277C67AAFA89642DA69C /* Build configuration list for PBXNativeTarget "DeepSeekHarnessMobileTests" */;
+			buildConfigurationList = 97F6277C67AAFA89642DA69C /* Build configuration list for PBXNativeTarget "KomorebiTests" */;
 			buildPhases = (
 				19F565C157878369B2723E65 /* Sources */,
 				EEDC2B8D9F6AFD676D97B2E2 /* Frameworks */,
@@ -293,9 +293,9 @@
 			dependencies = (
 				DD2CB1177812E5F54629AA43 /* PBXTargetDependency */,
 			);
-			name = DeepSeekHarnessMobileTests;
-			productName = DeepSeekHarnessMobileTests;
-			productReference = B64F29E9B8346B9A678CA487 /* DeepSeekHarnessMobileTests.xctest */;
+			name = KomorebiTests;
+			productName = KomorebiTests;
+			productReference = B64F29E9B8346B9A678CA487 /* KomorebiTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
@@ -307,7 +307,7 @@
 				LastSwiftUpdateCheck = 2660;
 				LastUpgradeCheck = 2660;
 			};
-			buildConfigurationList = E0E3EE1AA31431CC329FAB43 /* Build configuration list for PBXProject "DeepSeekHarnessMobile" */;
+			buildConfigurationList = E0E3EE1AA31431CC329FAB43 /* Build configuration list for PBXProject "Komorebi" */;
 			compatibilityVersion = "Xcode 3.2";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -325,8 +325,8 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				660802D096F9D6E6D171BFE5 /* DeepSeekHarnessMobile */,
-				7515E0402B76392350DE0E00 /* DeepSeekHarnessMobileTests */,
+				660802D096F9D6E6D171BFE5 /* Komorebi */,
+				7515E0402B76392350DE0E00 /* KomorebiTests */,
 			);
 		};
 /* End PBXProject section */
@@ -389,7 +389,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				D3A40BFC0B9C8D4B1C8FAA95 /* DeepSeekHarnessMobileApp.swift in Sources */,
+				D3A40BFC0B9C8D4B1C8FAA95 /* KomorebiApp.swift in Sources */,
 				A9F100000000000000000001 /* AppPreferences.swift in Sources */,
 				A9F200000000000000000001 /* PairingPayloadParser.swift in Sources */,
 				A9F300000000000000000001 /* KMPDomainIntents.swift in Sources */,
@@ -426,8 +426,8 @@
 /* Begin PBXTargetDependency section */
 		DD2CB1177812E5F54629AA43 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			name = DeepSeekHarnessMobile;
-			target = 660802D096F9D6E6D171BFE5 /* DeepSeekHarnessMobile */;
+			name = Komorebi;
+			target = 660802D096F9D6E6D171BFE5 /* Komorebi */;
 			targetProxy = A1CBB12844986E16990B5C5A /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -443,10 +443,10 @@
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=x86_64]" = "$(SRCROOT)/shared/build/bin/iosX64/debugFramework";
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				PRODUCT_BUNDLE_IDENTIFIER = ai.dsh.mobile.ios.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = cn.pipicore.komorebi.tests;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.10;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DshMobile.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/DshMobile";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Komorebi.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Komorebi";
 			};
 			name = Debug;
 		};
@@ -463,15 +463,15 @@
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = "$(SRCROOT)/shared/build/bin/iosArm64/debugFramework";
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=arm64]" = "$(SRCROOT)/shared/build/bin/iosSimulatorArm64/debugFramework";
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=x86_64]" = "$(SRCROOT)/shared/build/bin/iosX64/debugFramework";
-				INFOPLIST_FILE = DeepSeekHarnessMobile/Resources/Info.plist;
+				INFOPLIST_FILE = Komorebi/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = ai.dsh.mobile.ios;
-				PRODUCT_MODULE_NAME = DeepSeekHarnessMobile;
-				PRODUCT_NAME = DshMobile;
+				PRODUCT_BUNDLE_IDENTIFIER = cn.pipicore.komorebi;
+				PRODUCT_MODULE_NAME = Komorebi;
+				PRODUCT_NAME = Komorebi;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.10;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -488,10 +488,10 @@
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=x86_64]" = "$(SRCROOT)/shared/build/bin/iosX64/releaseFramework";
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				PRODUCT_BUNDLE_IDENTIFIER = ai.dsh.mobile.ios.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = cn.pipicore.komorebi.tests;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.10;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DshMobile.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/DshMobile";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Komorebi.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Komorebi";
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
@@ -624,15 +624,15 @@
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = "$(SRCROOT)/shared/build/bin/iosArm64/releaseFramework";
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=arm64]" = "$(SRCROOT)/shared/build/bin/iosSimulatorArm64/releaseFramework";
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*][arch=x86_64]" = "$(SRCROOT)/shared/build/bin/iosX64/releaseFramework";
-				INFOPLIST_FILE = DeepSeekHarnessMobile/Resources/Info.plist;
+				INFOPLIST_FILE = Komorebi/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = ai.dsh.mobile.ios;
-				PRODUCT_MODULE_NAME = DeepSeekHarnessMobile;
-				PRODUCT_NAME = DshMobile;
+				PRODUCT_BUNDLE_IDENTIFIER = cn.pipicore.komorebi;
+				PRODUCT_MODULE_NAME = Komorebi;
+				PRODUCT_NAME = Komorebi;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.10;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -643,7 +643,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		62C8D12628E44A75D40278DD /* Build configuration list for PBXNativeTarget "DeepSeekHarnessMobile" */ = {
+		62C8D12628E44A75D40278DD /* Build configuration list for PBXNativeTarget "Komorebi" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				FD30CB375EBC3646AECADEE1 /* Release */,
@@ -652,7 +652,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		97F6277C67AAFA89642DA69C /* Build configuration list for PBXNativeTarget "DeepSeekHarnessMobileTests" */ = {
+		97F6277C67AAFA89642DA69C /* Build configuration list for PBXNativeTarget "KomorebiTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				6CEBD593F2F351E87AE7198C /* Release */,
@@ -661,7 +661,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		E0E3EE1AA31431CC329FAB43 /* Build configuration list for PBXProject "DeepSeekHarnessMobile" */ = {
+		E0E3EE1AA31431CC329FAB43 /* Build configuration list for PBXProject "Komorebi" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				9F4AB37F5B2D9A876C06B532 /* Debug */,

@@ -1,8 +1,8 @@
 /**
  * 跨端协议保真护栏 —— 期望形状全部来自**客户端**与官方参考实现，不来自我方实现：
  *  - shared/src/commonTest/kotlin/com/clarklevis/dsh/shared/GatewayProtocolFixtures.kt（KMP 固定样例）
- *  - DeepSeekHarnessMobile/Core/GatewayFrameRouter.swift（Swift 解码路径）
- *  - DeepSeekHarnessMobileTests/GatewayProtocolTests.swift
+ *  - Komorebi/Core/GatewayFrameRouter.swift（Swift 解码路径）
+ *  - KomorebiTests/GatewayProtocolTests.swift
  *  - 官方参考实现 ~/refs/dsh/dsh-plugin-mobile-gateway-main（PROTOCOL.md + lib/index.mjs）
  *
  * 为什么存在：2026-09-10 连续两起线上事故，都是"帧形状与客户端契约不符"的静默失效：

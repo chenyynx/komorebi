@@ -129,7 +129,7 @@ final class ImageAttachmentCache {
         let base = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? fileManager.temporaryDirectory
         return base
-            .appendingPathComponent("DshMobile", isDirectory: true)
+            .appendingPathComponent("Komorebi", isDirectory: true)
             .appendingPathComponent("ImageAttachments", isDirectory: true)
     }
 }

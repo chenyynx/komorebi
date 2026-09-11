@@ -1,5 +1,5 @@
 import XCTest
-@testable import DeepSeekHarnessMobile
+@testable import Komorebi
 
 /// Guards the localization catalogs shipped in the app bundle: compiled
 /// tables must exist, stay populated, and keep placeholder arguments intact,

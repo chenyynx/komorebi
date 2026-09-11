@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct DeepSeekHarnessMobileApp: App {
+struct KomorebiApp: App {
     @StateObject private var store = AppStore()
 
     var body: some Scene {

@@ -14,7 +14,7 @@ import class DeepSeekHarnessShared.KotlinLong
 import class DeepSeekHarnessShared.KotlinInt
 import class DeepSeekHarnessShared.KotlinDouble
 import class DeepSeekHarnessShared.WorkspaceCodePreviewSupport
-@testable import DeepSeekHarnessMobile
+@testable import Komorebi
 
 private enum GatewayProtocolParityFixtures {
     // 这些样本与 shared/commonTest/GatewayProtocolFixtures.kt 逐字保持一致。
@@ -2065,7 +2065,7 @@ final class GatewayProtocolTests: XCTestCase {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let productRoot = repositoryRoot.appendingPathComponent("DeepSeekHarnessMobile")
+        let productRoot = repositoryRoot.appendingPathComponent("Komorebi")
         let enumerator = try XCTUnwrap(
             FileManager.default.enumerator(
                 at: productRoot,
@@ -2237,11 +2237,11 @@ final class GatewayProtocolTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let appStoreSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("DeepSeekHarnessMobile/Core/AppStore.swift"),
+            contentsOf: repositoryRoot.appendingPathComponent("Komorebi/Core/AppStore.swift"),
             encoding: .utf8
         )
         let adapterSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("DeepSeekHarnessMobile/Core/KMPSharedAdapter.swift"),
+            contentsOf: repositoryRoot.appendingPathComponent("Komorebi/Core/KMPSharedAdapter.swift"),
             encoding: .utf8
         )
         for callback in [
@@ -2280,7 +2280,7 @@ final class GatewayProtocolTests: XCTestCase {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let productRoot = repositoryRoot.appendingPathComponent("DeepSeekHarnessMobile")
+        let productRoot = repositoryRoot.appendingPathComponent("Komorebi")
         let enumerator = try XCTUnwrap(FileManager.default.enumerator(
             at: productRoot,
             includingPropertiesForKeys: nil

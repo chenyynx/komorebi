@@ -744,7 +744,7 @@ private struct GatewayCommandExecuteRequest: Encodable, Sendable {
 }
 
 private enum GatewayDeviceIdentityStore {
-    private static let service = "ai.dsh.mobile.ios.device-identity"
+    private static let service = "cn.pipicore.komorebi.device-identity"
     private static let account = "installation"
 
     static func loadOrCreate() throws -> String {
@@ -786,7 +786,7 @@ private enum GatewayDeviceIdentityStore {
 }
 
 private enum GatewayTokenStore {
-    private static let service = "ai.dsh.mobile.ios.gateway-token"
+    private static let service = "cn.pipicore.komorebi.gateway-token"
 
     static func load(for endpoint: URL) -> String? {
         let query: [String: Any] = [

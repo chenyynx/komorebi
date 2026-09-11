@@ -15,9 +15,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "660802D096F9D6E6D171BFE5"
-               BuildableName = "DshMobile.app"
-               BlueprintName = "DeepSeekHarnessMobile"
-               ReferencedContainer = "container:DeepSeekHarnessMobile.xcodeproj">
+               BuildableName = "Komorebi.app"
+               BlueprintName = "Komorebi"
+               ReferencedContainer = "container:Komorebi.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -31,9 +31,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "660802D096F9D6E6D171BFE5"
-            BuildableName = "DshMobile.app"
-            BlueprintName = "DeepSeekHarnessMobile"
-            ReferencedContainer = "container:DeepSeekHarnessMobile.xcodeproj">
+            BuildableName = "Komorebi.app"
+            BlueprintName = "Komorebi"
+            ReferencedContainer = "container:Komorebi.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <Testables>
@@ -42,9 +42,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "7515E0402B76392350DE0E00"
-               BuildableName = "DeepSeekHarnessMobileTests.xctest"
-               BlueprintName = "DeepSeekHarnessMobileTests"
-               ReferencedContainer = "container:DeepSeekHarnessMobile.xcodeproj">
+               BuildableName = "KomorebiTests.xctest"
+               BlueprintName = "KomorebiTests"
+               ReferencedContainer = "container:Komorebi.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -64,9 +64,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "660802D096F9D6E6D171BFE5"
-            BuildableName = "DshMobile.app"
-            BlueprintName = "DeepSeekHarnessMobile"
-            ReferencedContainer = "container:DeepSeekHarnessMobile.xcodeproj">
+            BuildableName = "Komorebi.app"
+            BlueprintName = "Komorebi"
+            ReferencedContainer = "container:Komorebi.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -81,9 +81,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "660802D096F9D6E6D171BFE5"
-            BuildableName = "DshMobile.app"
-            BlueprintName = "DeepSeekHarnessMobile"
-            ReferencedContainer = "container:DeepSeekHarnessMobile.xcodeproj">
+            BuildableName = "Komorebi.app"
+            BlueprintName = "Komorebi"
+            ReferencedContainer = "container:Komorebi.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

@@ -19,11 +19,11 @@
 
 ## 项目简介
 
-DeepSeek Harness Mobile（DshMobile）是面向 DeepSeek Harness 的社区原生移动客户端。项目已完成 Kotlin Multiplatform（KMP）架构改造，并同时提供可运行的 Android 与 iOS 应用：
+DeepSeek Harness Mobile（Komorebi）是面向 DeepSeek Harness 的社区原生移动客户端。项目已完成 Kotlin Multiplatform（KMP）架构改造，并同时提供可运行的 Android 与 iOS 应用：
 
 - `shared` 负责跨端协议、状态机、Reducer、投影和同步逻辑，是共享业务状态的唯一来源。
 - `androidApp` 使用 Kotlin、Jetpack Compose 和 OkHttp 实现 Android 产品能力。
-- `DeepSeekHarnessMobile` 使用 SwiftUI/UIKit 构建 iOS 界面，并通过 Kotlin/Native framework 接入共享逻辑。
+- `Komorebi` 使用 SwiftUI/UIKit 构建 iOS 界面，并通过 Kotlin/Native framework 接入共享逻辑。
 
 两端均通过 [`dsh-plugin-mobile-gateway`](https://github.com/Clarklevis1995/dsh-plugin-mobile-gateway) 与 Harness 建立 WebSocket 连接。网络、安全存储、文件、图片、生命周期和后台任务由各平台原生实现，业务规则则尽可能收敛到 `shared/commonMain`。
 
@@ -165,9 +165,9 @@ Android 和 iOS 均在平台侧负责安全存储、图片处理、临时文件�
 │       ├── main/                   # 产品代码与平台实现
 │       ├── test/                   # JVM 测试
 │       └── androidTest/            # 设备测试
-├── DeepSeekHarnessMobile/          # iOS 原生应用（SwiftUI/UIKit）
-├── DeepSeekHarnessMobileTests/     # iOS XCTest
-├── DeepSeekHarnessMobile.xcodeproj
+├── Komorebi/          # iOS 原生应用（SwiftUI/UIKit）
+├── KomorebiTests/     # iOS XCTest
+├── Komorebi.xcodeproj
 ├── Docs/                           # 调研、KMP 迁移与验证文档
 └── Design/                         # 设计规范与展示素材
 ```
@@ -207,7 +207,7 @@ Android 和 iOS 均在平台侧负责安全存储、图片处理、临时文件�
    ./gradlew :androidApp:installDebug
    ```
 
-4. 启动 `DshMobile`，扫描 WebUI 生成的配对二维码，或手动输入配对信息。
+4. 启动 `Komorebi`，扫描 WebUI 生成的配对二维码，或手动输入配对信息。
 
 Debug APK 位于：
 
@@ -224,8 +224,8 @@ adb reverse tcp:3080 tcp:3080
 ## 运行 iOS
 
 1. 配置 Java 17 和 Android SDK。
-2. 使用 Xcode 打开 `DeepSeekHarnessMobile.xcodeproj`。
-3. 选择 `DeepSeekHarnessMobile` Scheme 与目标设备。
+2. 使用 Xcode 打开 `Komorebi.xcodeproj`。
+3. 选择 `Komorebi` Scheme 与目标设备。
 4. 构建并运行。Xcode 中的 `Build KMP Framework` 阶段会自动选择并编译对应的 Kotlin/Native framework。
 5. 在应用中扫描 WebUI 配对二维码，或手动输入配对信息。
 
@@ -273,7 +273,7 @@ adb reverse tcp:3080 tcp:3080
 ./gradlew :androidApp:connectedDebugAndroidTest
 ```
 
-iOS 测试可在 Xcode 中选择 `DeepSeekHarnessMobile` Scheme 后执行 **Product → Test**。构建阶段会自动链接对应架构的 `DeepSeekHarnessShared.framework`。
+iOS 测试可在 Xcode 中选择 `Komorebi` Scheme 后执行 **Product → Test**。构建阶段会自动链接对应架构的 `DeepSeekHarnessShared.framework`。
 
 ## 相关文档
 
