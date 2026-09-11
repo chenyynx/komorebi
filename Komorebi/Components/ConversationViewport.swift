@@ -596,10 +596,15 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
         hasConversationContent: Bool
     ) {
         collectionView.contentInset.bottom = bottomInset
-        var indicatorInsets = collectionView.verticalScrollIndicatorInsets
-        indicatorInsets.right = 14
-        indicatorInsets.bottom = bottomInset
-        collectionView.verticalScrollIndicatorInsets = indicatorInsets
+        // Match the trajectory ScrollView indicator: system default flush
+        // to the screen edge (no horizontal inset), bottom cleared of the
+        // composer only.
+        collectionView.verticalScrollIndicatorInsets = UIEdgeInsets(
+            top: collectionView.verticalScrollIndicatorInsets.top,
+            left: collectionView.verticalScrollIndicatorInsets.left,
+            bottom: bottomInset,
+            right: collectionView.verticalScrollIndicatorInsets.right
+        )
         guard collectionView.bounds.width > 0 else {
             // History can arrive during UIViewControllerRepresentable's first
             // update, before Auto Layout assigns the viewport its real width.
