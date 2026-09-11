@@ -1920,14 +1920,23 @@ final class AppStore: ObservableObject {
             backgroundExecutionController.turnEnded(sessionID: record.sessionId)
         }
         if event.type == "turn/end", record.sessionId == selectedSessionId {
-            dispatchSessionControl(.requestContextUsage(
-                sessionID: record.sessionId,
-                isConnected: gateway.state.isConnected
-            ))
-            dispatchSessionControl(.requestSessionStats(
-                sessionID: record.sessionId,
-                isConnected: gateway.state.isConnected
-            ))
+            // Skip while the socket is down: the KMP store rejects disconnected
+            // control requests and the rejection surfaces verbatim as a red
+            // banner ("KMP SessionControl 失败（not-connected）…"). Replayed
+            // turn/end events land in this window right after the app returns
+            // from suspension. The connection-ready handler already refreshes
+            // stats for the selected session via refreshSessionControls(_:)
+            // (AppStore.swift, gateway.connected path), so nothing is lost.
+            if gateway.state.isConnected {
+                dispatchSessionControl(.requestContextUsage(
+                    sessionID: record.sessionId,
+                    isConnected: true
+                ))
+                dispatchSessionControl(.requestSessionStats(
+                    sessionID: record.sessionId,
+                    isConnected: true
+                ))
+            }
         }
         if event.type == "permission/preset",
            let preset = event.raw?["preset"]?.stringValue ?? event.raw?["name"]?.stringValue {
