@@ -392,6 +392,11 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
         super.viewDidLoad()
         view.backgroundColor = .clear
         collectionView.alwaysBounceVertical = true
+        // The vertical scroller is the system-native indicator (same control
+        // the SwiftUI trajectory ScrollView shows); it is stated explicitly so
+        // the intent survives refactors. apply() keeps it off the screen edge
+        // and clear of the composer.
+        collectionView.showsVerticalScrollIndicator = true
         collectionView.isScrollEnabled = true
         collectionView.keyboardDismissMode = .interactive
         collectionView.backgroundColor = .clear
@@ -591,7 +596,10 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
         hasConversationContent: Bool
     ) {
         collectionView.contentInset.bottom = bottomInset
-        collectionView.verticalScrollIndicatorInsets.bottom = bottomInset
+        var indicatorInsets = collectionView.verticalScrollIndicatorInsets
+        indicatorInsets.right = 6
+        indicatorInsets.bottom = bottomInset
+        collectionView.verticalScrollIndicatorInsets = indicatorInsets
         guard collectionView.bounds.width > 0 else {
             // History can arrive during UIViewControllerRepresentable's first
             // update, before Auto Layout assigns the viewport its real width.
