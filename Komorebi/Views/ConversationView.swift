@@ -268,7 +268,7 @@ struct ConversationView: View {
         .sheet(isPresented: $showsSessionStats) {
             SessionStatsSheet(
                 snapshot: store.selectedSessionStatsSnapshot,
-                sessionTitle: store.selectedSession?.title ?? String(localized: "session.new.fallback", defaultValue: "新建 DeepSeek Harness")
+                sessionTitle: store.selectedSession?.title ?? String(localized: "session.new.fallback", defaultValue: "新建 Komorebi")
             )
         }
     }

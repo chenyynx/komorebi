@@ -10,7 +10,7 @@ enum L10n {
     // MARK: Session title placeholders
 
     /// Placeholder title assigned when a brand-new session is created locally.
-    static let newSessionPlaceholderTitle = String(localized: "新建 Harness 会话")
+    static let newSessionPlaceholderTitle = String(localized: "新建 Komorebi 会话")
 
     /// Prefix shared by all remote-session placeholder titles.
     static let remoteSessionTitlePrefix = String(localized: "远端会话")
@@ -33,7 +33,7 @@ enum L10n {
     // keeps working under any localization.
 
     static let userMessageTitle = String(localized: "你")
-    static let streamingAssistantTitle = String(localized: "DeepSeek · 正在生成")
+    static let streamingAssistantTitle = String(localized: "Komorebi · 正在生成")
     static let streamingReasoningTitle = String(localized: "Think · 正在推理")
     static let assemblingToolTitle = String(localized: "Tool Call · 正在组装")
     static let toolResultDoneTitle = String(localized: "工具完成")
@@ -70,7 +70,7 @@ enum L10n {
         case "cordis":
             String(localized: "preset.blurb.cordis", defaultValue: "用于创建和维护自定义 Agent 预设。")
         default:
-            String(localized: "preset.blurb.default", defaultValue: "由 DeepSeek Harness 提供的 Agent 预设。")
+            String(localized: "preset.blurb.default", defaultValue: "由 Komorebi 提供的 Agent 预设。")
         }
     }
 

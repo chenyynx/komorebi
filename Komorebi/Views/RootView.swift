@@ -10,7 +10,7 @@ struct RootView: View {
     var body: some View {
         RootNavigationHost(store: store)
             .equatable()
-            .alert("DeepSeek Harness", isPresented: Binding(get: { store.lastError != nil }, set: { if !$0 { store.lastError = nil } })) {
+            .alert("Komorebi", isPresented: Binding(get: { store.lastError != nil }, set: { if !$0 { store.lastError = nil } })) {
                 Button(String(localized: "好"), role: .cancel) { store.lastError = nil }
             } message: { Text(store.lastError ?? "") }
             .onChange(of: scenePhase) { _, phase in
@@ -51,7 +51,7 @@ private struct RootNavigationHost: View, Equatable {
                               !Task.isCancelled else { return }
                         let header = ConversationNavigationHeader(
                             sessionID: store.selectedSessionId,
-                            title: String(localized: "session.new.fallback", defaultValue: "新建 DeepSeek Harness"),
+                            title: String(localized: "session.new.fallback", defaultValue: "新建 Komorebi"),
                             agentPresetTitle: agentPresetDisplayName(for: store.agentPresetDefault)
                         )
                         navigate(to: .conversation(header))
@@ -111,7 +111,7 @@ private struct RootNavigationHost: View, Equatable {
         let presetID = session?.agentPreset ?? store.agentPresetDefault
         return ConversationNavigationHeader(
             sessionID: session?.id,
-            title: session?.title ?? String(localized: "session.new.fallback", defaultValue: "新建 DeepSeek Harness"),
+            title: session?.title ?? String(localized: "session.new.fallback", defaultValue: "新建 Komorebi"),
             agentPresetTitle: agentPresetDisplayName(for: presetID)
         )
     }

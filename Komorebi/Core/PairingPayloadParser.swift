@@ -63,7 +63,7 @@ enum PairingPayloadError: LocalizedError, Equatable {
         case .invalidBase64URL:
             String(localized: "配对内容不是有效的 Base64URL 字符串。")
         case .invalidJSON:
-            String(localized: "Base64URL 解码后的内容不是有效的 DeepSeek Harness 配对 JSON。")
+            String(localized: "Base64URL 解码后的内容不是有效的 Komorebi 配对 JSON。")
         case .unsupportedVersion(let version):
             String(localized: "pairing.unsupported.version", defaultValue: "不支持的配对协议版本 \(version)，当前客户端需要 version 2。")
         case .invalidEndpoint:

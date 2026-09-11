@@ -76,7 +76,7 @@ struct HarnessMark: View {
     var body: some View {
         HStack(spacing: 7) {
             GhostWhiteIcon(size: 27)
-            Text("deepseek").font(.system(size: 22, weight: .semibold, design: .rounded))
+            Text("komorebi").font(.system(size: 22, weight: .semibold, design: .rounded))
             Text("HARNESS")
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
                 .padding(.horizontal, 5).padding(.vertical, 3)

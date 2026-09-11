@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// The native counterpart of the DeepSeek Harness landing-page background.
+/// The native counterpart of the Komorebi landing-page background.
 /// Metal renders the fluid field while Canvas keeps the grid and sampled whale
 /// independent, so each layer can be tuned or disabled without touching UI.
 struct HarnessAnimatedBackground: View {

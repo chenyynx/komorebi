@@ -339,7 +339,7 @@ final class ConversationViewportLayoutTests: XCTestCase {
     @MainActor
     func testStreamingHeightEstimateDoesNotClipTextKitContent() {
         let payload = ConversationViewportEntry.StreamingAssistant(
-            title: "DeepSeek · 正在生成",
+            title: "Komorebi · 正在生成",
             text: """
             第一段正在生成的中文内容，用于验证自动换行后的真实高度。
             第二段继续增长，并包含 a/very/long/path/with/separators/file.txt。
@@ -400,7 +400,7 @@ final class ConversationViewportLayoutTests: XCTestCase {
             ConversationItem(
                 id: "streaming-response",
                 kind: .assistant,
-                title: "DeepSeek · 正在生成",
+                title: "Komorebi · 正在生成",
                 text: text,
                 isError: false,
                 date: Date(timeIntervalSince1970: 1)
@@ -494,7 +494,7 @@ final class ConversationViewportLayoutTests: XCTestCase {
                 ConversationItem(
                     id: "streaming-response",
                     kind: .assistant,
-                    title: "DeepSeek · 正在生成",
+                    title: "Komorebi · 正在生成",
                     text: text,
                     isError: false,
                     date: Date(timeIntervalSince1970: 1)
@@ -569,7 +569,7 @@ final class ConversationViewportLayoutTests: XCTestCase {
                 ConversationItem(
                     id: "streaming-response",
                     kind: .assistant,
-                    title: "DeepSeek · 正在生成",
+                    title: "Komorebi · 正在生成",
                     text: String(repeating: "第\(revision)轮内容 ", count: revision),
                     isError: false,
                     date: Date(timeIntervalSince1970: 1)
@@ -728,7 +728,7 @@ final class ConversationViewportLayoutTests: XCTestCase {
             ConversationItem(
                 id: "streaming-response",
                 kind: .assistant,
-                title: "DeepSeek · 正在生成",
+                title: "Komorebi · 正在生成",
                 text: initialText,
                 isError: false,
                 date: Date(timeIntervalSince1970: 1)
@@ -761,7 +761,7 @@ final class ConversationViewportLayoutTests: XCTestCase {
             ConversationItem(
                 id: "streaming-response",
                 kind: .assistant,
-                title: "DeepSeek · 正在生成",
+                title: "Komorebi · 正在生成",
                 text: intermediateText,
                 isError: false,
                 date: Date(timeIntervalSince1970: 1)
@@ -771,7 +771,7 @@ final class ConversationViewportLayoutTests: XCTestCase {
             ConversationItem(
                 id: "streaming-response",
                 kind: .assistant,
-                title: "DeepSeek · 正在生成",
+                title: "Komorebi · 正在生成",
                 text: latestText,
                 isError: false,
                 date: Date(timeIntervalSince1970: 1)

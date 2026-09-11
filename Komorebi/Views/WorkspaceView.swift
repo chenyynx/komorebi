@@ -28,7 +28,7 @@ struct WorkspaceView: View {
                     VStack(alignment: .leading, spacing: 7) {
                         Text("探索未至之境")
                             .font(.system(size: 32, weight: .bold))
-                        Text("DeepSeek Harness 预览版")
+                        Text("Komorebi Deamon 预览版")
                             .font(.subheadline).foregroundStyle(.white.opacity(0.65))
                     }
                     .id("workspace-hero")
@@ -943,12 +943,12 @@ private final class GatewayScannerController: UIViewController, AVCaptureMetadat
                     if granted {
                         self.configureAndRun()
                     } else {
-                        self.finish(with: String(localized: "camera.denied", defaultValue: "未获得相机权限。请在系统设置中允许 DeepSeek Harness 使用相机后重试。"))
+                        self.finish(with: String(localized: "camera.denied", defaultValue: "未获得相机权限。请在系统设置中允许 Komorebi 使用相机后重试。"))
                     }
                 }
             }
         case .denied, .restricted:
-            finish(with: String(localized: "camera.restricted", defaultValue: "相机权限不可用。请在系统设置中允许 DeepSeek Harness 使用相机后重试。"))
+            finish(with: String(localized: "camera.restricted", defaultValue: "相机权限不可用。请在系统设置中允许 Komorebi 使用相机后重试。"))
         @unknown default:
             finish(with: String(localized: "无法确定当前相机权限状态。"))
         }

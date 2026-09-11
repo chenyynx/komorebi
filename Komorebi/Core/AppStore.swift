@@ -533,7 +533,7 @@ final class AppStore: ObservableObject {
         guard !hasHandledColdLaunchConnection else { return }
         hasHandledColdLaunchConnection = true
         guard gateway.hasStoredCredential(for: endpoint) else {
-            lastError = String(localized: "尚未连接到 DeepSeek Harness。请点击主页右上角的 🔑 按钮，扫描配对二维码或手动输入 Token 进行连接。")
+            lastError = String(localized: "尚未连接到 Komorebi。请点击主页右上角的 🔑 按钮，扫描配对二维码或手动输入 Token 进行连接。")
             return
         }
         connect()
@@ -600,7 +600,7 @@ final class AppStore: ObservableObject {
     }
     func saveDefaultModel(provider: String, model: String, reasoningEffort: String?) {
         guard gateway.state.isConnected else {
-            lastError = String(localized: "请先连接 DeepSeek Harness")
+            lastError = String(localized: "请先连接 Komorebi")
             return
         }
         dispatchSessionControl(.saveDefaultModel(
@@ -776,7 +776,7 @@ final class AppStore: ObservableObject {
     }
     func browseDirectories(path: String? = nil) {
         guard gateway.state.isConnected else {
-            lastError = String(localized: "请先连接 DeepSeek Harness")
+            lastError = String(localized: "请先连接 Komorebi")
             return
         }
         directoryIsLoading = true
@@ -788,7 +788,7 @@ final class AppStore: ObservableObject {
             return
         }
         guard gateway.state.isConnected else {
-            lastError = String(localized: "请先连接 DeepSeek Harness")
+            lastError = String(localized: "请先连接 Komorebi")
             return
         }
         guard supportsFileDownloads else {
@@ -820,7 +820,7 @@ final class AppStore: ObservableObject {
     }
     func createDirectory(parentPath: String, name: String) {
         guard gateway.state.isConnected else {
-            lastError = String(localized: "请先连接 DeepSeek Harness")
+            lastError = String(localized: "请先连接 Komorebi")
             return
         }
         let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -838,7 +838,7 @@ final class AppStore: ObservableObject {
     }
     func createWorkspace(path: String) {
         guard gateway.state.isConnected else {
-            lastError = String(localized: "请先连接 DeepSeek Harness")
+            lastError = String(localized: "请先连接 Komorebi")
             return
         }
         workspaceCreationIsLoading = true
@@ -886,7 +886,7 @@ final class AppStore: ObservableObject {
               let goal = selectedGoalProjection?.goal?.goal else { return }
         guard goal.phase.lowercased() != "complete" else { return }
         guard gateway.state.isConnected else {
-            lastError = String(localized: "请先连接 DeepSeek Harness")
+            lastError = String(localized: "请先连接 Komorebi")
             return
         }
         guard supportsGoals else {
@@ -954,7 +954,7 @@ final class AppStore: ObservableObject {
     func send(_ text: String, images: [GatewayOutgoingImage] = []) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !images.isEmpty else { return false }
-        guard gateway.state.isConnected else { lastError = String(localized: "请先在设置中连接 DeepSeek Harness"); return false }
+        guard gateway.state.isConnected else { lastError = String(localized: "请先在设置中连接 Komorebi"); return false }
         guard images.isEmpty || supportsImages else {
             lastError = String(localized: "当前 Mobile Gateway 不支持图片，请升级并重启 dsh web。")
             return false
@@ -1044,7 +1044,7 @@ final class AppStore: ObservableObject {
             isConnected: gateway.state.isConnected
         ))
     }
-    func title(for sessionId: String) -> String { sessions.first(where: { $0.id == sessionId })?.title ?? "DeepSeek Harness" }
+    func title(for sessionId: String) -> String { sessions.first(where: { $0.id == sessionId })?.title ?? "Komorebi" }
 
     private func handle(_ frame: GatewayFrame) {
         if frame.kind == "tasks" || frame.kind == "tasks-updated" {
@@ -1317,7 +1317,7 @@ final class AppStore: ObservableObject {
 
     func archiveSession(_ sessionID: String) {
         guard gateway.state.isConnected else {
-            lastError = String(localized: "请先在设置中连接 DeepSeek Harness")
+            lastError = String(localized: "请先在设置中连接 Komorebi")
             return
         }
         gateway.archiveSession(sessionId: sessionID)
@@ -1325,7 +1325,7 @@ final class AppStore: ObservableObject {
 
     func renameSession(_ sessionID: String, title: String) {
         guard gateway.state.isConnected else {
-            lastError = String(localized: "请先在设置中连接 DeepSeek Harness")
+            lastError = String(localized: "请先在设置中连接 Komorebi")
             return
         }
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2016,7 +2016,7 @@ final class AppStore: ObservableObject {
 
     private func setGlobalDefault(target: String, value: String) {
         guard gateway.state.isConnected else {
-            lastError = String(localized: "请先连接 DeepSeek Harness")
+            lastError = String(localized: "请先连接 Komorebi")
             return
         }
         dispatchSessionControl(.setDefault(target: target, value: value, isConnected: true))
