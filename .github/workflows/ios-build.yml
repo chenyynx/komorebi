@@ -1,0 +1,69 @@
+name: iOS Build
+
+on:
+  push:
+    branches: [main]
+    # Docs, server (Node) and Android-only changes never ship an iOS binary —
+    # keep them out of the macOS build queue.
+    paths-ignore:
+      - '**/*.md'
+      - 'Docs/**'
+      - 'Design/**'
+      - 'server/**'
+      - 'androidApp/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # Komorebi targets iOS 17 — macos-15 (Xcode 16.x) is sufficient.
+    # Public repo: GitHub-hosted macOS minutes are free and unlimited.
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Cache Gradle + Kotlin/Native
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.konan
+          key: kmp-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/**', 'shared/src/**', 'gradle.properties') }}
+          restore-keys: kmp-${{ runner.os }}-
+
+      # The Komorebi target has a build phase that itself runs
+      # `gradlew :shared:linkReleaseFrameworkIosArm64`; xcodebuild drives it.
+      # Unsigned on purpose — the phone signs locally (KSign flow).
+      - name: Build (unsigned)
+        run: |
+          xcodebuild build \
+            -project Komorebi.xcodeproj \
+            -scheme Komorebi \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            -derivedDataPath build/DerivedData
+
+      - name: Package ipa
+        run: |
+          mkdir -p build/Payload
+          cp -r build/DerivedData/Build/Products/Release-iphoneos/Komorebi.app build/Payload/
+          BUILD_NO=${{ github.run_number }}
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NO" build/Payload/Komorebi.app/Info.plist
+          echo "CFBundleVersion = $BUILD_NO"
+          cd build && zip -qr Komorebi-unsigned.ipa Payload
+
+      - name: Upload unsigned ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: Komorebi-unsigned-${{ github.sha }}
+          path: build/Komorebi-unsigned.ipa
