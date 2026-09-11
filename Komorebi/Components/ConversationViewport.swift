@@ -597,7 +597,7 @@ final class ConversationViewportController: UIViewController, UICollectionViewDe
     ) {
         collectionView.contentInset.bottom = bottomInset
         var indicatorInsets = collectionView.verticalScrollIndicatorInsets
-        indicatorInsets.right = 6
+        indicatorInsets.right = 14
         indicatorInsets.bottom = bottomInset
         collectionView.verticalScrollIndicatorInsets = indicatorInsets
         guard collectionView.bounds.width > 0 else {
