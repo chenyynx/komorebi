@@ -166,23 +166,23 @@ final class GatewayClient: ObservableObject {
         if resetReportedFailure { lastReportedFailure = nil }
         state = .connecting
         var request = URLRequest(url: url)
-        request.setValue(channel, forHTTPHeaderField: "X-DSH-Channel")
+        request.setValue(channel, forHTTPHeaderField: "X-Komorebi-Channel")
         do {
-            request.setValue(try GatewayDeviceIdentityStore.loadOrCreate(), forHTTPHeaderField: "X-DSH-Device-ID")
+            request.setValue(try GatewayDeviceIdentityStore.loadOrCreate(), forHTTPHeaderField: "X-Komorebi-Device-ID")
         } catch {
             fail(String(localized: "gateway.device-id.unavailable", defaultValue: "无法读取或创建设备唯一标识：\(error.localizedDescription)"), shouldReconnect: false)
             return
         }
         if let pairingCode {
-            request.setValue("dsh-mobile-v1, dsh-pair.\(pairingCode)", forHTTPHeaderField: "Sec-WebSocket-Protocol")
+            request.setValue("komorebi-v1, komorebi-pair.\(pairingCode)", forHTTPHeaderField: "Sec-WebSocket-Protocol")
         } else if let token = GatewayTokenStore.load(for: url) {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            request.setValue("dsh-mobile-v1", forHTTPHeaderField: "Sec-WebSocket-Protocol")
+            request.setValue("komorebi-v1", forHTTPHeaderField: "Sec-WebSocket-Protocol")
         } else {
             // This still permits the explicitly documented local Debug mode.
             // A production gateway responds with HTTP 401 and the UI routes the
             // user to pairing instead of silently treating the socket as ready.
-            request.setValue("dsh-mobile-v1", forHTTPHeaderField: "Sec-WebSocket-Protocol")
+            request.setValue("komorebi-v1", forHTTPHeaderField: "Sec-WebSocket-Protocol")
         }
         let socket = URLSession.shared.webSocketTask(with: request)
         socket.maximumMessageSize = Self.maximumIncomingMessageSize

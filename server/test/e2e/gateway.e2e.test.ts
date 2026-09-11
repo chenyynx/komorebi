@@ -76,7 +76,7 @@ interface Client {
 }
 
 function connectTo(targetPort: number, pairingCode: string, deviceId: string, channel?: string): Client {
-  const ws = new WebSocket(`ws://127.0.0.1:${targetPort}/ws/mobile`, ["dsh-mobile-v1", `dsh-pair.${pairingCode}`], {
+  const ws = new WebSocket(`ws://127.0.0.1:${targetPort}/ws/mobile`, ["komorebi-v1", `komorebi-pair.${pairingCode}`], {
     headers: { "x-dsh-device-id": deviceId, ...(channel ? { "x-dsh-channel": channel } : {}) },
   });
   const queue: Record<string, unknown>[] = [];

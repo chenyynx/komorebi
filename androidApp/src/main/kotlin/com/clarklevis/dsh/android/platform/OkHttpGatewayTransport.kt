@@ -55,7 +55,7 @@ internal class OkHttpGatewayTransport(
                     ?: MOBILE_PROTOCOL
             )
             .apply {
-                spec.channel?.let { header("X-DSH-Channel", it) }
+                spec.channel?.let { header("X-Komorebi-Channel", it) }
                 spec.bearerToken?.takeIf(String::isNotBlank)?.let {
                     header("Authorization", "Bearer $it")
                 }
@@ -171,9 +171,9 @@ internal class OkHttpGatewayTransport(
     }
 
     companion object {
-        private const val DEVICE_ID_HEADER = "X-DSH-Device-ID"
-        private const val MOBILE_PROTOCOL = "dsh-mobile-v1"
-        private const val PAIR_PROTOCOL_PREFIX = "dsh-pair."
+        private const val DEVICE_ID_HEADER = "X-Komorebi-Device-ID"
+        private const val MOBILE_PROTOCOL = "komorebi-v1"
+        private const val PAIR_PROTOCOL_PREFIX = "komorebi-pair."
         internal const val MAXIMUM_INCOMING_MESSAGE_SIZE = 16 * 1_024 * 1_024
         // OkHttp 的 WebSocket 回调不能挂起，固定“帧数”上限会把大量小 token 误判为
         // 内存溢出。与 iOS 的串行 receive loop 一样保持有序、不丢帧，仅用总字节预算

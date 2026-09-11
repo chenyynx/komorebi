@@ -28,7 +28,7 @@ export type Lane = "control" | "conversation";
 export interface AuthenticatedConnection {
   readonly ws: WebSocket;
   readonly lane: Lane;
-  /** true = opened via explicit X-DSH-Channel (lane-restricted); false = legacy single connection. */
+  /** true = opened via explicit X-Komorebi-Channel (lane-restricted); false = legacy single connection. */
   readonly split: boolean;
   readonly deviceId: string;
   readonly deviceName: string;
@@ -173,10 +173,11 @@ export class GatewayServer {
     const headers = {
       "sec-websocket-protocol": req.headers["sec-websocket-protocol"],
       "x-dsh-device-id": req.headers["x-dsh-device-id"] as string | undefined,
+      "x-komorebi-device-id": req.headers["x-komorebi-device-id"] as string | undefined,
       authorization: req.headers["authorization"],
     };
     const clientIp = req.socket.remoteAddress ?? "unknown";
-    const attemptDevice = req.headers["x-dsh-device-id"] as string | undefined;
+    const attemptDevice = (req.headers["x-komorebi-device-id"] ?? req.headers["x-dsh-device-id"]) as string | undefined;
     connLog(`upgrade from=${clientIp} device=${attemptDevice ?? "(none)"} proto=${String(req.headers["sec-websocket-protocol"] ?? "")}`);
 
     // First connect: pairing subprotocol. Reconnect: bearer/dsh-auth token.
@@ -273,7 +274,7 @@ export class GatewayServer {
   }
 
   private laneOf(req: IncomingMessage): { lane: Lane; split: boolean } {
-    const channel = req.headers["x-dsh-channel"];
+    const channel = req.headers["x-komorebi-channel"] ?? req.headers["x-dsh-channel"];
     if (typeof channel === "string" && channel === "conversation") return { lane: "conversation", split: true };
     if (typeof channel === "string" && channel === "control") return { lane: "control", split: true };
     return { lane: "control", split: false };

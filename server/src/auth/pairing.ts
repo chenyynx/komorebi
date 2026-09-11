@@ -2,7 +2,8 @@
  * Pairing service — QR payload generation and first-connect verification.
  * Protocol §1: payload is {version:2, publicUrl, pairingCode, expiresAt},
  * encoded as unpadded Base64URL of UTF-8 JSON. First connect uses the
- * `dsh-mobile-v1, dsh-pair.<code>` subprotocol plus X-DSH-Device-ID header.
+ * `komorebi-v1, komorebi-pair.<code>` subprotocol plus X-Komorebi-Device-ID header
+ * (legacy dsh-* spellings are still accepted during the rename migration).
  * @module auth/pairing
  */
 
@@ -58,24 +59,27 @@ export function decodePairingPayload(text: string): { ok: true; payload: Pairing
 export function extractPairingFromRequest(headers: {
   "sec-websocket-protocol"?: string | undefined;
   "x-dsh-device-id"?: string | undefined;
+  "x-komorebi-device-id"?: string | undefined;
 }): { ok: true; pairingCode: string; deviceId: string } | { ok: false; reason: "missing-protocol" | "missing-device-id" | "missing-pair" } {
   const protocol = headers["sec-websocket-protocol"];
   if (typeof protocol !== "string" || protocol.length === 0) {
     return { ok: false, reason: "missing-protocol" };
   }
   const parts = protocol.split(",").map((p) => p.trim()).filter((p) => p.length > 0);
-  if (!parts.includes("dsh-mobile-v1")) {
+  if (!parts.includes("komorebi-v1") && !parts.includes("dsh-mobile-v1")) {
     return { ok: false, reason: "missing-protocol" };
   }
-  const pairPart = parts.find((p) => p.startsWith("dsh-pair."));
+  const pairPart = parts.find((p) => p.startsWith("komorebi-pair."))
+    ?? parts.find((p) => p.startsWith("dsh-pair."));
   if (pairPart === undefined) {
     return { ok: false, reason: "missing-pair" };
   }
-  const deviceId = headers["x-dsh-device-id"];
+  const deviceId = headers["x-komorebi-device-id"] ?? headers["x-dsh-device-id"];
   if (typeof deviceId !== "string" || deviceId.trim() === "") {
     return { ok: false, reason: "missing-device-id" };
   }
-  return { ok: true, pairingCode: pairPart.slice("dsh-pair.".length), deviceId: deviceId.trim() };
+  const prefix = pairPart.startsWith("komorebi-pair.") ? "komorebi-pair." : "dsh-pair.";
+  return { ok: true, pairingCode: pairPart.slice(prefix.length), deviceId: deviceId.trim() };
 }
 
 /** Extract bearer token or dsh-auth subprotocol from a reconnect request. */

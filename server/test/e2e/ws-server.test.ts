@@ -75,7 +75,7 @@ describe("pairing handshake (protocol §1)", () => {
   it("first connect with pairing code receives paired + hello, token works on reconnect", async () => {
     const { code, expiresAt } = devices.issuePairingCode();
     const pairing = connectOnce({
-      protocols: ["dsh-mobile-v1", `dsh-pair.${code}`],
+      protocols: ["komorebi-v1", `komorebi-pair.${code}`],
       headers: { "x-dsh-device-id": "device-test-1" },
     });
     const { ws, frames } = await pairing;
@@ -88,7 +88,7 @@ describe("pairing handshake (protocol §1)", () => {
 
     // Reconnect with bearer token
     const reconnect = connectOnce({
-      protocols: ["dsh-mobile-v1"],
+      protocols: ["komorebi-v1"],
       headers: { authorization: `Bearer ${token}` },
     });
     const { ws: ws2, frames: frames2 } = await reconnect;
@@ -101,7 +101,7 @@ describe("pairing handshake (protocol §1)", () => {
     const { code } = devices.issuePairingCode();
     devices.consumePairingCode(code, "someone", "x"); // consume it
     const result = await connectOnce({
-      protocols: ["dsh-mobile-v1", `dsh-pair.${code}`],
+      protocols: ["komorebi-v1", `komorebi-pair.${code}`],
       headers: { "x-dsh-device-id": "device-test-2" },
     });
     expect(result.frames).toHaveLength(0); // no paired/hello delivered
@@ -110,7 +110,7 @@ describe("pairing handshake (protocol §1)", () => {
 
   it("rejects missing credential with close 4001", async () => {
     const result = await connectOnce({
-      protocols: ["dsh-mobile-v1"],
+      protocols: ["komorebi-v1"],
       headers: { "x-dsh-device-id": "device-test-3" },
     });
     expect(result.frames).toHaveLength(0);
@@ -121,7 +121,7 @@ describe("frame pump and validation errors", () => {
   it("delivers validated frames to the dispatcher", async () => {
     const { code } = devices.issuePairingCode();
     const { ws, frames } = await connectOnce({
-      protocols: ["dsh-mobile-v1", `dsh-pair.${code}`],
+      protocols: ["komorebi-v1", `komorebi-pair.${code}`],
       headers: { "x-dsh-device-id": "device-pump" },
     });
     await waitFrames({ frames }, 2);
@@ -136,7 +136,7 @@ describe("frame pump and validation errors", () => {
   it("answers invalid JSON with bad-request error frame", async () => {
     const { code } = devices.issuePairingCode();
     const { ws, frames } = await connectOnce({
-      protocols: ["dsh-mobile-v1", `dsh-pair.${code}`],
+      protocols: ["komorebi-v1", `komorebi-pair.${code}`],
       headers: { "x-dsh-device-id": "device-json" },
     });
     await waitFrames({ frames }, 2);
@@ -149,7 +149,7 @@ describe("frame pump and validation errors", () => {
   it("answers unknown frame type with unknown-command error", async () => {
     const { code } = devices.issuePairingCode();
     const { ws, frames } = await connectOnce({
-      protocols: ["dsh-mobile-v1", `dsh-pair.${code}`],
+      protocols: ["komorebi-v1", `komorebi-pair.${code}`],
       headers: { "x-dsh-device-id": "device-unk" },
     });
     await waitFrames({ frames }, 2);
@@ -164,7 +164,7 @@ describe("split-channel lanes (protocol split-channels)", () => {
   it("conversation lane accepts message and rejects control frames with wrong-channel", async () => {
     const { code } = devices.issuePairingCode();
     const { ws, frames } = await connectOnce({
-      protocols: ["dsh-mobile-v1", `dsh-pair.${code}`],
+      protocols: ["komorebi-v1", `komorebi-pair.${code}`],
       headers: { "x-dsh-device-id": "device-lane", "x-dsh-channel": "conversation" },
     });
     await waitFrames({ frames }, 2);
@@ -183,7 +183,7 @@ describe("split-channel lanes (protocol split-channels)", () => {
   it("control lane accepts everything (legacy default)", async () => {
     const { code } = devices.issuePairingCode();
     const { ws, frames } = await connectOnce({
-      protocols: ["dsh-mobile-v1", `dsh-pair.${code}`],
+      protocols: ["komorebi-v1", `komorebi-pair.${code}`],
       headers: { "x-dsh-device-id": "device-ctl" },
     });
     await waitFrames({ frames }, 2);

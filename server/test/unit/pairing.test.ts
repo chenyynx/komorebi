@@ -56,7 +56,7 @@ describe("pairing payload codec", () => {
 describe("first-connect request extraction", () => {
   it("extracts pairing code and device id (protocol §1 headers)", () => {
     const result = extractPairingFromRequest({
-      "sec-websocket-protocol": "dsh-mobile-v1, dsh-pair.CODE123",
+      "sec-websocket-protocol": "komorebi-v1, komorebi-pair.CODE123",
       "x-dsh-device-id": "  UUID-ABC  ",
     });
     expect(result).toEqual({ ok: true, pairingCode: "CODE123", deviceId: "UUID-ABC" });
@@ -64,22 +64,31 @@ describe("first-connect request extraction", () => {
 
   it("rejects missing device id (protocol: no anonymous pairing)", () => {
     const result = extractPairingFromRequest({
-      "sec-websocket-protocol": "dsh-mobile-v1, dsh-pair.CODE",
+      "sec-websocket-protocol": "komorebi-v1, komorebi-pair.CODE",
     });
     expect(result).toEqual({ ok: false, reason: "missing-device-id" });
   });
 
   it("rejects missing pairing subprotocol part", () => {
     const result = extractPairingFromRequest({
-      "sec-websocket-protocol": "dsh-mobile-v1",
+      "sec-websocket-protocol": "komorebi-v1",
       "x-dsh-device-id": "UUID",
     });
     expect(result).toEqual({ ok: false, reason: "missing-pair" });
   });
 
-  it("rejects missing dsh-mobile-v1 base protocol", () => {
+  it("accepts legacy dsh-* spellings during the rename migration", () => {
+    expect(
+      extractPairingFromRequest({
+        "sec-websocket-protocol": "dsh-mobile-v1, dsh-pair.CODE9",
+        "x-dsh-device-id": "dev-legacy",
+      }),
+    ).toEqual({ ok: true, pairingCode: "CODE9", deviceId: "dev-legacy" });
+  });
+
+  it("rejects missing komorebi-v1 base protocol", () => {
     const result = extractPairingFromRequest({
-      "sec-websocket-protocol": "dsh-pair.CODE",
+      "sec-websocket-protocol": "komorebi-pair.CODE",
       "x-dsh-device-id": "UUID",
     });
     expect(result).toEqual({ ok: false, reason: "missing-protocol" });
@@ -90,14 +99,14 @@ describe("reconnect auth extraction", () => {
   it("prefers Authorization Bearer header (protocol recommendation)", () => {
     const result = extractAuthFromRequest({
       authorization: "Bearer TOKEN-XYZ",
-      "sec-websocket-protocol": "dsh-mobile-v1",
+      "sec-websocket-protocol": "komorebi-v1",
     });
     expect(result).toEqual({ ok: true, token: "TOKEN-XYZ" });
   });
 
   it("falls back to dsh-auth subprotocol", () => {
     const result = extractAuthFromRequest({
-      "sec-websocket-protocol": "dsh-mobile-v1, dsh-auth.TOKEN-XYZ",
+      "sec-websocket-protocol": "komorebi-v1, dsh-auth.TOKEN-XYZ",
     });
     expect(result).toEqual({ ok: true, token: "TOKEN-XYZ" });
   });
