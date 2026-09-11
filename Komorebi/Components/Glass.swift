@@ -75,7 +75,7 @@ struct ConnectionDot: View {
 struct HarnessMark: View {
     var body: some View {
         HStack(spacing: 7) {
-            DeepSeekWhaleIcon(size: 27)
+            GhostWhiteIcon(size: 27)
             Text("deepseek").font(.system(size: 22, weight: .semibold, design: .rounded))
             Text("HARNESS")
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
@@ -85,6 +85,18 @@ struct HarnessMark: View {
                         .stroke(Color.white, lineWidth: 1)
                 }
         }
+    }
+}
+
+struct GhostWhiteIcon: View {
+    var size: CGFloat
+
+    var body: some View {
+        Image("GhostMarkWhite")
+            .resizable()
+            .scaledToFit()
+            .frame(width: size, height: size * 0.743)
+            .accessibilityHidden(true)
     }
 }
 
