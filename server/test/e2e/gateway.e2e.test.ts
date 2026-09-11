@@ -1031,3 +1031,30 @@ describe("turn seed survives a process restart (P0-4 completion: transcript-scan
     await b.stackServer.close();
   });
 });
+
+describe("official-aligned write gate (P0): oversized input rejected, never enters the stream", () => {
+  it("a 200KB message gets an error frame and starts no turn", async () => {
+    const stack = await openStack(scriptedQuery);
+    const client = await pairedOn(stack.actualPort);
+    client.ws.send(JSON.stringify({ type: "session-create", requestId: "gate1", cwd: "/home/ubuntu" }));
+    const sid = (await client.next<{ sessionId: string }>({ kind: "session-created" })).sessionId;
+    client.ws.send(JSON.stringify({ type: "message", sessionId: sid, text: "g".repeat(200 * 1024) }));
+    const err = await client.next<{ kind: string; code?: string }>({ kind: "error" });
+    expect(err.code).toBe("bad-request");
+    expect(err).toBeTruthy();
+    client.ws.close();
+    await stack.stackServer.close();
+  });
+
+  it("normal-sized messages still start turns", async () => {
+    const stack = await openStack(scriptedQuery);
+    const client = await pairedOn(stack.actualPort);
+    client.ws.send(JSON.stringify({ type: "session-create", requestId: "gate2", cwd: "/home/ubuntu" }));
+    const sid = (await client.next<{ sessionId: string }>({ kind: "session-created" })).sessionId;
+    client.ws.send(JSON.stringify({ type: "message", sessionId: sid, text: "正常大小" }));
+    await client.next({ kind: "sent" });
+    await client.next({ kind: "event", "event.type": "turn/end" });
+    client.ws.close();
+    await stack.stackServer.close();
+  });
+});

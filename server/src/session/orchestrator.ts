@@ -46,6 +46,7 @@ import { ClaudeRunner, type PermissionOutcome, type SdkQueryFn } from "../backen
 import { pageHistory } from "../backend/history.js";
 import { schemeAEvent } from "../protocol/wire-events.js";
 import { TranscriptReader, transcriptPath } from "../backend/transcript.js";
+import { renumberFallback } from "../backend/history.js";
 import {
   currentHostModel,
   resolveSpawnModel,
@@ -441,7 +442,25 @@ export class SessionOrchestrator {
     }
 
     conn.ws.send(JSON.stringify(sentFrame(sessionId, f.mode ?? "queue")));
+    if (this.rejectOversizedMessage(conn, sessionId, f.text ?? "")) return;
     this.startTurn(state, f.text ?? "", f.images);
+  }
+
+  /** Official-aligned write gate (chat-performance-plan P0): oversized user
+   *  input is rejected with a clear error instead of entering the event
+   *  stream — a 1.79MB paste froze+crashed the client (2026-09-11). */
+  static readonly MAX_INLINE_MESSAGE_BYTES = 128 * 1024;
+
+  private rejectOversizedMessage(conn: AuthenticatedConnection, sessionId: string, text: string): boolean {
+    if (Buffer.byteLength(text, "utf8") <= SessionOrchestrator.MAX_INLINE_MESSAGE_BYTES) return false;
+    const kb = (Buffer.byteLength(text, "utf8") / 1024).toFixed(0);
+    conn.ws.send(JSON.stringify(errorFrame(
+      ERROR_CODES.BAD_REQUEST,
+      `消息 ${kb}KB 超过 128KB 单条上限，已被拒绝（与 ChatGPT/Claude 官方一致的防冻结保护）。请只粘贴关键段落；完整内容请存为服务器上的文件，把路径发给我即可。`,
+      "message",
+      sessionId,
+    )));
+    return true;
   }
 
   private startTurn(state: SessionState, text: string, images?: readonly { mediaType: string; data: string; name?: string }[]): void {
@@ -551,12 +570,12 @@ export class SessionOrchestrator {
     if (events.length === 0 && state.metadata.ccSessionId !== undefined) {
       // transcript fallback (plan D2): replay on disk with fresh seq numbers
       const path = transcriptPath(HOME, state.metadata.cwd, state.metadata.ccSessionId);
-      events = this.transcript.read(path).map((item, index) => ({
-        type: item.type,
-        seq: index,
-        time: item.time,
-        data: item.data,
-      }));
+      // P2: anchor fallback events onto the tail of the live sequence space
+      // (monotonic, no 0..N vs 7000+ gap that tripped KMP fail-closed).
+      events = renumberFallback(
+        this.transcript.read(path).map((item) => ({ type: item.type, time: item.time, data: item.data, seq: 0 })),
+        state.nextSeq,
+      );
     }
     const page = pageHistory(events, {
       sessionId: frame.frame.sessionId,

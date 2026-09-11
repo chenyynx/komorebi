@@ -1,3 +1,9 @@
+/** Re-anchor transcript-fallback events onto the live sequence tail. */
+export function renumberFallback<T extends { seq: number }>(items: readonly T[], nextSeq: number): T[] {
+  const base = Math.max(0, nextSeq - items.length);
+  return items.map((item, index) => ({ ...item, seq: base + index }));
+}
+
 /**
  * HistoryService — build `history` frames from session event buffers
  * (plan §4 backend/history.ts, protocol §5 history semantics):

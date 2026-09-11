@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { SessionState } from "../../src/domain/state";
 import { pageHistory, type HistoryRequest } from "../../src/backend/history";
+import { renumberFallback } from "../../src/backend/history";
 import type { SessionEvent } from "../../src/domain/events";
 
 function buildBuffer(count: number): SessionState {
@@ -167,5 +168,18 @@ describe("oversized text blocks are shrunk in history pages (1.79MB paste froze 
     expect(block.text.length).toBeLessThan(40 * 1024);
     expect(block.text).toContain("已截断");
     expect(page.bytes).toBeLessThan(300 * 1024);
+  });
+});
+
+describe("renumberFallback anchors transcript events onto the live seq tail (P2)", () => {
+  it("no gap between fallback pages and subsequent live events", () => {
+    const items = [1, 2, 3].map((i) => ({ type: "assistant/message", time: i, data: {}, seq: 0 }));
+    const out = renumberFallback(items, 7222);
+    expect(out.map((e) => e.seq)).toEqual([7219, 7220, 7221]);
+  });
+
+  it("clamps at zero for fresh sessions", () => {
+    const items = [1, 2, 3].map((i) => ({ type: "user/message", time: i, data: {}, seq: 0 }));
+    expect(renumberFallback(items, 2).map((e) => e.seq)).toEqual([0, 1, 2]);
   });
 });
