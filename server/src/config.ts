@@ -184,7 +184,7 @@ export function loadConfig(overrides?: Partial<Config>): Config {
     port: intEnv("MGW_PORT", 3090),
     wsPath: strEnv("MGW_WS_PATH", "/ws/mobile"),
     publicUrl: strEnv("MGW_PUBLIC_URL", "wss://dsh.pipicore.cn/ws/mobile"),
-    dataDir: strEnv("MGW_DATA_DIR", "/home/ubuntu/dsh-mobile/server/data"),
+    dataDir: strEnv("MGW_DATA_DIR", "/home/ubuntu/komorebi/server/data"),
     workspaceRoot: strEnv("MGW_WORKSPACE_ROOT", "/home/ubuntu"),
     sessionCwdRoot: strEnv("MGW_SESSION_CWD_ROOT", "/home/ubuntu"),
     models: overrides?.models ?? resolveModels(hostModel),
