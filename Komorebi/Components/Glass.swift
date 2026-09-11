@@ -93,7 +93,6 @@ struct DeepSeekWhaleIcon: View {
 
     var body: some View {
         Image("DeepSeekWhale")
-            .renderingMode(.template)
             .resizable()
             .scaledToFit()
             .frame(width: size, height: size * 0.743)
