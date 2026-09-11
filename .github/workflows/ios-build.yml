@@ -18,9 +18,10 @@ permissions:
 
 jobs:
   build:
-    # Komorebi targets iOS 17 — macos-15 (Xcode 16.x) is sufficient.
+    # Upstream code uses iOS 26 SDK APIs (ToolbarSpacer, .glass material,
+    # new interpolation overloads) — Xcode 16.x cannot compile it.
     # Public repo: GitHub-hosted macOS minutes are free and unlimited.
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -29,6 +30,14 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Pin Xcode 26.2 (stable)
+        # Runner-image rollouts move the default Xcode (26.5 -> 26.6 killed
+        # xcodebuild silently mid-build on the sibling project). Pin the last
+        # known-good so builds are reproducible.
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.2.app
+          xcodebuild -version
 
       - name: Cache Gradle + Kotlin/Native
         uses: actions/cache@v4
