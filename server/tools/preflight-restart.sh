@@ -1,5 +1,5 @@
 #!/bin/sh
-# dsh-cc-mgw 重启门禁（F5）—— 把规则「pm2 restart 自己前先问 pp」变成机器拦得住的退出码。
+# komorebi-gw 重启门禁（F5）—— 把规则「pm2 restart 自己前先问 pp」变成机器拦得住的退出码。
 #
 # 为什么存在：2026-09-10 我在部署流式修复时，明知网关有 1 个 claude 子进程仍执行了
 # pm2 restart，掐断了 pp 正在手机上跑的回合；客户端等了一个永远不来的 turn/end
@@ -10,11 +10,11 @@
 # 原则：  任何一项存疑都按"在用"处理（宁可慢，不要意外）。
 set -u
 
-MGW_PID_FILE="$HOME/.pm2/pids/dsh-cc-mgw-15.pid"
+MGW_PID_FILE=$(ls "$HOME"/.pm2/pids/komorebi-gw-*.pid 2>/dev/null | head -1)
 ADMIN="http://127.0.0.1:3090"
 BUSY=0
 
-echo "[preflight] dsh-cc-mgw 重启门禁  $(date '+%F %T')"
+echo "[preflight] komorebi-gw 重启门禁  $(date '+%F %T')"
 
 # 1) 进程与子进程：有 claude 子进程 = 有回合正在跑
 if [ ! -f "$MGW_PID_FILE" ]; then

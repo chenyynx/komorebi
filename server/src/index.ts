@@ -83,7 +83,7 @@ export function main(): void {
   const healedTitles = orchestrator.deriveMissingTitles();
   if (healedTitles > 0) {
     sessionIndex.flush();
-    console.log(`[dsh-cc-mgw] titles derived from transcripts: ${healedTitles}`);
+    console.log(`[komorebi-gw] titles derived from transcripts: ${healedTitles}`);
   }
   const server = new GatewayServer(config, devices, {
     onFrame: (conn, frame) => orchestrator.onFrame(conn, frame as ValidatedFrame),
@@ -98,8 +98,8 @@ export function main(): void {
   };
 
   void server.listen().then((port) => {
-    console.log(`[dsh-cc-mgw] listening on 127.0.0.1:${port}${config.wsPath}`);
-    console.log(`[dsh-cc-mgw] sessions restored: ${restored}` +
+    console.log(`[komorebi-gw] listening on 127.0.0.1:${port}${config.wsPath}`);
+    console.log(`[komorebi-gw] sessions restored: ${restored}` +
       (sessionIndex.loadRejections > 0 ? ` (rejected ${sessionIndex.loadRejections} record(s))` : "") +
       (sessionIndex.loadRejections < 0 ? " (index unreadable, starting empty)" : ""));
   });
@@ -113,7 +113,7 @@ export function main(): void {
     const closed = orchestrator.shutdown();
     sessionIndex.stop();
     sessionIndex.flush();
-    console.log(`[dsh-cc-mgw] ${signal}: closed ${closed} in-flight turn(s), index flushed`);
+    console.log(`[komorebi-gw] ${signal}: closed ${closed} in-flight turn(s), index flushed`);
     void server.close().then(() => process.exit(0));
     setTimeout(() => process.exit(0), 900).unref();
   };

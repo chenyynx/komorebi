@@ -1,8 +1,8 @@
 {
-  "name": "dsh-cc-mgw",
+  "name": "komorebi-gw",
   "version": "0.1.0",
   "private": true,
-  "description": "dsh-mobile protocol-compatible mobile gateway backed by Claude Code",
+  "description": "Komorebi — dsh-mobile-protocol-compatible mobile gateway backed by Claude Code",
   "type": "module",
   "engines": { "node": ">=22" },
   "scripts": {

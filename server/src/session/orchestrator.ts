@@ -474,7 +474,7 @@ export class SessionOrchestrator {
     const wanted = state.metadata.nextModel ?? this.settings.defaultModel?.model;
     const model = resolveSpawnModel(wanted, this.hotModels());
     if (wanted !== undefined && model === undefined) {
-      console.warn(`[dsh-cc-mgw] ignoring model "${wanted}" (not in the current whitelist); inheriting the host default`);
+      console.warn(`[komorebi-gw] ignoring model "${wanted}" (not in the current whitelist); inheriting the host default`);
     }
     const resume = state.metadata.ccSessionId;
     runner.start({
@@ -886,7 +886,7 @@ export class SessionOrchestrator {
 
   private buildHost(): OutboundFrame {
     return hostFrame({
-      version: "dsh-cc-mgw 0.1.0 (claude-code)",
+      version: "komorebi-gw 0.1.0 (claude-code)",
       cwd: this.config.workspaceRoot,
       provider: "claude-code",
       model: this.settings.defaultModel?.model ?? this.config.models[0]?.id ?? "",
