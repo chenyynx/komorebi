@@ -153,3 +153,19 @@ describe("history lookback cap (P0-5: client froze pulling 7k+ events)", () => {
     expect(pulled).toBe(120);
   });
 });
+
+describe("oversized text blocks are shrunk in history pages (1.79MB paste froze the client)", () => {
+  it("user/message giant content is truncated and pages stay under budget", () => {
+    const state = buildBuffer(5);
+    const giant = "x".repeat(1790 * 1024);
+    state.emit("user/message", 99, { content: [{ type: "text", text: giant }], source: "user" });
+    const buffer = state.bufferedEvents;
+    const page = pageHistory(buffer, { sessionId: "s", view: "conversation" });
+    const hit = page.events.find((e) => e.type === "user/message" && (e.data as { content?: unknown[] }).content);
+    expect(hit).toBeDefined();
+    const block = (hit!.data as { content: { text: string }[] }).content[0] as { text: string };
+    expect(block.text.length).toBeLessThan(40 * 1024);
+    expect(block.text).toContain("已截断");
+    expect(page.bytes).toBeLessThan(300 * 1024);
+  });
+});

@@ -27,7 +27,7 @@ export interface HistoryPage {
 }
 
 const DEFAULT_MAX_MESSAGES = 50;
-const DEFAULT_MAX_BYTES = 4 * 1024 * 1024;
+const DEFAULT_MAX_BYTES = 256 * 1024;
 /**
  * Hard cap on how far back a single history backfill may walk. The official
  * client loops `hasMore` pages until completion and projects every event on
@@ -37,6 +37,47 @@ const DEFAULT_MAX_BYTES = 4 * 1024 * 1024;
  */
 const HISTORY_MAX_TOTAL_EVENTS = 800;
 const TOOL_RESULT_PREVIEW_CAP = 2000;
+const EVENT_TEXT_CAP = 32 * 1024;
+
+/** Shrink oversized text blocks in one event (history-view guard). */
+function shrinkEventText(event: SessionEvent): SessionEvent {
+  const data = event.data as {
+    text?: unknown;
+    content?: unknown;
+    message?: { content?: unknown };
+  };
+  const TRUNCATED = "\n…[超长内容已截断，完整记录在服务器 transcript]";
+  const cut = (t: string) => (t.length > EVENT_TEXT_CAP ? t.slice(0, EVENT_TEXT_CAP) + TRUNCATED : t);
+  let changed = false;
+  const shrinkBlocks = (blocks: unknown[]): unknown[] =>
+    blocks.map((b) => {
+      if (b && typeof b === "object") {
+        const blk = b as { type?: unknown; text?: unknown };
+        if (blk.type === "text" && typeof blk.text === "string" && blk.text.length > EVENT_TEXT_CAP) {
+          changed = true;
+          return { ...blk, text: cut(blk.text) };
+        }
+      }
+      return b;
+    });
+  let nextData = data as Record<string, unknown>;
+  if (typeof data.text === "string" && data.text.length > EVENT_TEXT_CAP) {
+    changed = true;
+    nextData = { ...nextData, text: cut(data.text) };
+  }
+  if (Array.isArray(data.content)) {
+    const blocks = shrinkBlocks(data.content);
+    if (changed) nextData = { ...nextData, content: blocks };
+  }
+  if (data.message && Array.isArray((data.message as { content?: unknown }).content)) {
+    const msgChanged = changed;
+    const blocks = shrinkBlocks((data.message as { content: unknown[] }).content);
+    if (msgChanged) {
+      nextData = { ...nextData, message: { ...(data.message as object), content: blocks } };
+    }
+  }
+  return changed ? { ...event, data: nextData as SessionEvent["data"] } : event;
+}
 
 /** Apply view=conversation trimming to one event (returns null to drop). */
 function trimEvent(event: SessionEvent): SessionEvent | null {
@@ -82,6 +123,8 @@ export function pageHistory(
   if (capped) {
     pool = pool.filter((e) => e.seq >= capFloorSeq);
   }
+  // Shrink oversized payloads before byte accounting so pages stay honest.
+  pool = pool.map(shrinkEventText);
   if (view === "conversation") {
     pool = pool
       .map(trimEvent)
